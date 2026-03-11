@@ -25,7 +25,6 @@
             -webkit-tap-highlight-color: transparent;
             padding-top: env(safe-area-inset-top);
         }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
         #splashScreen { transition: opacity 0.5s ease-out; }
     </style>
 </head>
@@ -35,7 +34,7 @@
         <div class="w-20 h-20 bg-indigo-600 text-white rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-2xl">
             <i class="fas fa-wallet"></i>
         </div>
-        <p id="statusText" class="text-slate-400 font-bold text-xs uppercase tracking-widest">Initialisiere Cloud...</p>
+        <p id="statusText" class="text-slate-400 font-bold text-xs uppercase tracking-widest text-indigo-600">Initialisiere Cloud...</p>
     </div>
 
     <div id="mainApp" class="flex flex-col min-h-screen">
@@ -69,8 +68,20 @@
                 <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                 <input type="date" id="datum" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                 <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-lg">Speichern</button>
-                <button type="button" onclick="closeModal('addModal')" class="w-full text-slate-400 py-2">Abbrechen</button>
+                <button type="button" onclick="closeModal('addModal')" class="w-full text-slate-400 py-2 text-sm font-bold">Abbrechen</button>
             </form>
+        </div>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="dataModal" class="hidden fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black">Einstellungen</h3>
+                <button onclick="closeModal('dataModal')"><i class="fas fa-times"></i></button>
+            </div>
+            <p class="text-sm text-slate-500 mb-4">Deine Daten werden sicher in der Cloud gespeichert.</p>
+            <button onclick="location.reload()" class="w-full bg-slate-100 py-4 rounded-xl font-bold text-sm">App neu laden</button>
         </div>
     </div>
 
@@ -79,19 +90,20 @@
         var db = null;
         var currentUser = null;
         
-        // --- HIER DEINE FIREBASE DATEN EINFÜGEN ---
         const firebaseConfig = {
-  apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
-  authDomain: "meinbudgetcloud.firebaseapp.com",
-  projectId: "meinbudgetcloud",
-  storageBucket: "meinbudgetcloud.firebasestorage.app",
-  messagingSenderId: "594713378906",
-  appId: "1:594713378906:web:7929f7a875159336101863"
-};
+            apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
+            authDomain: "meinbudgetcloud.firebaseapp.com",
+            projectId: "meinbudgetcloud",
+            storageBucket: "meinbudgetcloud.firebasestorage.app",
+            messagingSenderId: "594713378906",
+            appId: "1:594713378906:web:7929f7a875159336101863"
+        };
 
         window.onload = function() {
             try {
-                firebase.initializeApp(firebaseConfig);
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
                 db = firebase.firestore();
                 firebase.auth().onAuthStateChanged(user => {
                     if (user) { 
@@ -99,26 +111,29 @@
                         document.getElementById('cloudStatus').classList.replace('bg-slate-300', 'bg-emerald-500');
                         startSync(); 
                     } else { 
-                        firebase.auth().signInAnonymously(); 
+                        firebase.auth().signInAnonymously().catch(err => {
+                            console.error("Auth Fehler:", err);
+                            document.getElementById('statusText').innerText = "Auth Fehler: Login aktivieren!";
+                        });
                     }
                 });
             } catch(e) {
-                console.error("Firebase Fehler:", e);
-                alert("Cloud-Verbindung konnte nicht hergestellt werden.");
+                console.error("Initialisierung Fehler:", e);
+                document.getElementById('statusText').innerText = "Verbindung fehlgeschlagen.";
             }
         };
 
         function startSync() {
-            // Pfad-Struktur laut Sicherheits-Regel
-            const col = db.collection('artifacts').doc('budget-app').collection('users').doc(currentUser.uid).collection('ausgaben');
+            // Wir nutzen eine einfachere Struktur für den Anfang
+            const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
             
-            col.onSnapshot(snap => {
+            col.orderBy('ts', 'desc').onSnapshot(snap => {
                 expenses = snap.docs.map(d => ({...d.data(), id: d.id}));
                 renderUI();
                 hideSplash();
             }, err => {
                 console.error("Firestore Fehler:", err);
-                alert("Keine Berechtigung zum Lesen/Schreiben. Bitte Firebase Rules prüfen.");
+                document.getElementById('statusText').innerText = "Regeln in Firebase prüfen!";
             });
         }
 
@@ -129,15 +144,15 @@
             expenses.forEach(e => {
                 total += parseFloat(e.betrag);
                 html += `
-                <div class="bg-white p-5 rounded-2xl border border-slate-100 flex justify-between items-center">
+                <div class="bg-white p-5 rounded-2xl border border-slate-100 flex justify-between items-center shadow-sm">
                     <div>
                         <p class="font-bold text-slate-900">${e.beschreibung}</p>
-                        <p class="text-xs text-slate-400">${e.datum}</p>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">${e.datum}</p>
                     </div>
-                    <p class="font-black">${parseFloat(e.betrag).toFixed(2)} €</p>
+                    <p class="font-black text-slate-900">${parseFloat(e.betrag).toFixed(2)} €</p>
                 </div>`;
             });
-            list.innerHTML = html;
+            list.innerHTML = html || '<div class="text-center py-20 text-slate-300">Noch keine Einträge</div>';
             document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
         }
 
@@ -152,13 +167,13 @@
 
             const data = {
                 betrag: parseFloat(document.getElementById('betrag').value),
-                beschreibung: document.getElementById('beschreibung').value,
+                beschreibung: document.getElementById('beschreibung').value.trim(),
                 datum: document.getElementById('datum').value,
                 ts: Date.now()
             };
 
             try {
-                await db.collection('artifacts').doc('budget-app').collection('users').doc(currentUser.uid).collection('ausgaben').add(data);
+                await db.collection('users').doc(currentUser.uid).collection('ausgaben').add(data);
                 closeModal('addModal');
                 document.getElementById('expenseForm').reset();
             } catch(e) {
