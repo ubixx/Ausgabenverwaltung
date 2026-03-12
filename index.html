@@ -3,17 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Budget Cloud V5.13</title>
+    <title>Budget Cloud Komplett</title>
     
+    <!-- PWA & Mobile Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#6366f1">
     
     <link rel="manifest" href="manifest.json">
     
+    <!-- Tailwind CSS & FontAwesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -23,20 +26,28 @@
         body { 
             background-color: var(--app-bg); 
             -webkit-tap-highlight-color: transparent;
+            user-select: none;
             padding-top: env(safe-area-inset-top);
         }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
         #splashScreen { transition: opacity 0.5s ease-out; }
+        .category-pill.selected { background-color: var(--app-primary) !important; color: white !important; border-color: var(--app-primary) !important; }
+        .action-card { transition: transform 0.1s active; cursor: pointer; }
+        .action-card:active { transform: scale(0.98); }
+        .scroll-container { -webkit-overflow-scrolling: touch; }
     </style>
 </head>
 <body class="min-h-screen font-sans text-slate-800">
 
+    <!-- SPLASH SCREEN -->
     <div id="splashScreen" class="fixed inset-0 bg-white z-[1000] flex flex-col items-center justify-center p-8 text-center">
         <div class="w-20 h-20 bg-indigo-600 text-white rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-2xl">
             <i class="fas fa-wallet"></i>
         </div>
-        <p id="statusText" class="text-slate-400 font-bold text-xs uppercase tracking-widest text-indigo-600">Initialisiere Cloud...</p>
+        <p id="statusText" class="text-slate-400 font-bold text-xs uppercase tracking-widest">Verbinde mit Cloud...</p>
     </div>
 
+    <!-- MAIN APP UI -->
     <div id="mainApp" class="flex flex-col min-h-screen">
         <header class="p-6 bg-white border-b border-slate-100 flex justify-between items-center sticky top-0 z-30">
             <div>
@@ -50,54 +61,113 @@
             </button>
         </header>
 
-        <div class="flex-1 p-6 space-y-4 pb-40 overflow-y-auto" id="expenseList"></div>
+        <div class="bg-white/95 backdrop-blur-md border-b border-slate-100 sticky top-[93px] z-20">
+            <div class="px-6 py-4">
+                <div class="relative">
+                    <input type="text" id="searchInput" placeholder="Suchen..." onkeyup="renderUI()" class="w-full p-4 pl-12 bg-slate-100/50 border border-transparent rounded-2xl text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all">
+                    <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                </div>
+            </div>
+            <div id="filterBar" class="px-6 pb-4 flex gap-2 overflow-x-auto no-scrollbar scroll-container"></div>
+        </div>
+
+        <div class="flex-1 p-6 space-y-4 pb-40 overflow-y-auto scroll-container" id="expenseList"></div>
 
         <div class="fixed bottom-0 left-0 right-0 p-8 flex justify-center pointer-events-none z-40 mb-[env(safe-area-inset-bottom)]">
-            <button id="addExpenseBtn" class="w-full max-w-md bg-indigo-600 text-white font-bold py-5 rounded-2xl flex items-center justify-center gap-3 pointer-events-auto text-lg shadow-xl active:scale-95 transition-all">
+            <button id="addExpenseBtn" class="w-full max-w-md bg-indigo-600 text-white font-bold py-5 rounded-2xl flex items-center justify-center gap-3 pointer-events-auto text-lg shadow-xl active:bg-indigo-800 transition-all">
                 <i class="fas fa-plus"></i> Neuer Eintrag
             </button>
         </div>
     </div>
 
-    <!-- MODAL ZUM HINZUFÜGEN -->
-    <div id="addModal" class="hidden fixed inset-0 bg-slate-900/60 z-[600] flex items-end sm:items-center justify-center p-4">
-        <div class="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl">
-            <h3 class="text-xl font-black mb-6">Neuer Eintrag</h3>
-            <form id="expenseForm" class="space-y-4">
-                <input type="number" id="betrag" placeholder="0,00" step="0.01" required class="w-full p-4 bg-slate-50 rounded-2xl text-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
-                <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
-                <input type="date" id="datum" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
-                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-lg">Speichern</button>
-                <button type="button" onclick="closeModal('addModal')" class="w-full text-slate-400 py-2 text-sm font-bold">Abbrechen</button>
-            </form>
+    <!-- SETTINGS MODAL (Import, Export, Kategorien) -->
+    <div id="dataModal" class="hidden fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black text-slate-900">Einstellungen</h3>
+                <button onclick="closeModal('dataModal')" class="text-slate-400 p-2"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto no-scrollbar space-y-6">
+                <!-- CSV Bereich -->
+                <div class="space-y-4">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Daten-Management</label>
+                    <div class="grid grid-cols-1 gap-3">
+                        <label class="bg-indigo-50 text-indigo-600 font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-3 cursor-pointer border border-indigo-100 active:bg-indigo-200 transition-colors">
+                            <i class="fas fa-file-import text-lg"></i> CSV Import
+                            <input type="file" accept=".csv" class="hidden" onchange="handleImport(this)">
+                        </label>
+                        <button onclick="handleManualExport()" class="bg-slate-900 text-white font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-3 shadow-lg active:bg-slate-800 transition-all">
+                            <i class="fas fa-file-export text-lg"></i> Als CSV Exportieren
+                        </button>
+                    </div>
+                </div>
+                <!-- Kategorien Bereich -->
+                <div class="pt-4 border-t border-slate-100">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Kategorien Verwalten</label>
+                    <div id="manageCategoryList" class="space-y-2 mb-4"></div>
+                    <div class="flex gap-2">
+                        <input type="text" id="newCatInput" placeholder="Neue Kategorie..." class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-300">
+                        <button onclick="addNewCategory()" class="bg-indigo-600 text-white px-5 rounded-xl"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- SETTINGS MODAL -->
-    <div id="dataModal" class="hidden fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-6">
-        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-black">Einstellungen</h3>
-                <button onclick="closeModal('dataModal')"><i class="fas fa-times"></i></button>
+    <!-- ADD/EDIT MODAL -->
+    <div id="addModal" class="hidden fixed inset-0 bg-slate-900/60 z-[600] flex items-end sm:items-center justify-center">
+        <div class="bg-white w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[95vh] mb-[env(safe-area-inset-bottom)]">
+             <div class="flex justify-between items-center mb-6">
+                <h3 id="modalTitle" class="text-xl font-black text-slate-900">Eintrag</h3>
+                <button onclick="closeModal('addModal')" class="w-10 h-10 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center"><i class="fas fa-times"></i></button>
             </div>
-            <p class="text-sm text-slate-500 mb-4">Deine Daten werden sicher in der Cloud gespeichert.</p>
-            <button onclick="location.reload()" class="w-full bg-slate-100 py-4 rounded-xl font-bold text-sm">App neu laden</button>
+            <form id="expenseForm" class="space-y-4">
+                <input type="hidden" id="editId">
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="number" id="betrag" placeholder="0,00" step="0.01" required class="w-full p-4 bg-slate-50 rounded-2xl text-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                    <input type="date" id="datum" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                </div>
+                <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                
+                <!-- Beleg Feld -->
+                <div class="relative">
+                    <input type="text" id="beleg" placeholder="Beleg (URL oder Notiz)" class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-sm">
+                    <div id="belegPreview" class="absolute right-4 top-1/2 -translate-y-1/2 hidden">
+                        <a href="#" id="belegLink" target="_blank" class="text-indigo-600"><i class="fas fa-external-link-alt"></i></a>
+                    </div>
+                </div>
+
+                <div id="categoryGrid" class="flex flex-wrap gap-2"></div>
+                <div class="flex gap-4 pt-4">
+                    <button type="submit" class="flex-1 bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 transition-transform">Speichern</button>
+                    <button type="button" id="deleteBtn" class="hidden bg-rose-50 text-rose-500 font-bold px-6 rounded-2xl active:bg-rose-100"><i class="fas fa-trash-alt"></i></button>
+                </div>
+            </form>
         </div>
     </div>
 
     <script>
         var expenses = [];
+        var categories = [];
+        var activeFilter = 'all';
+        var selectedCategory = '';
         var db = null;
         var currentUser = null;
-        
-        const firebaseConfig = {
-            apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
-            authDomain: "meinbudgetcloud.firebaseapp.com",
-            projectId: "meinbudgetcloud",
-            storageBucket: "meinbudgetcloud.firebasestorage.app",
-            messagingSenderId: "594713378906",
-            appId: "1:594713378906:web:7929f7a875159336101863"
-        };
+
+        // =========================================================================
+        // 🔴🔴🔴 HIER DEINE EIGENEN FIREBASE DATEN EINTRAGEN 🔴🔴🔴
+        // Kopiere den Block aus der Firebase Console unter Projekteinstellungen
+        // =========================================================================
+        // Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
+  authDomain: "meinbudgetcloud.firebaseapp.com",
+  projectId: "meinbudgetcloud",
+  storageBucket: "meinbudgetcloud.firebasestorage.app",
+  messagingSenderId: "594713378906",
+  appId: "1:594713378906:web:7929f7a875159336101863"
+};
+        // =========================================================================
 
         window.onload = function() {
             try {
@@ -111,77 +181,242 @@
                         document.getElementById('cloudStatus').classList.replace('bg-slate-300', 'bg-emerald-500');
                         startSync(); 
                     } else { 
-                        firebase.auth().signInAnonymously().catch(err => {
-                            console.error("Auth Fehler:", err);
-                            document.getElementById('statusText').innerText = "Auth Fehler: Login aktivieren!";
-                        });
+                        firebase.auth().signInAnonymously().catch(err => alert("Login Fehler: " + err.message));
                     }
                 });
             } catch(e) {
-                console.error("Initialisierung Fehler:", e);
-                document.getElementById('statusText').innerText = "Verbindung fehlgeschlagen.";
+                document.getElementById('statusText').innerText = "Verbindung fehlgeschlagen. Firebase Daten prüfen!";
             }
         };
 
         function startSync() {
-            // Wir nutzen eine einfachere Struktur für den Anfang
-            const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+            const userRef = db.collection('users').doc(currentUser.uid);
             
-            col.orderBy('ts', 'desc').onSnapshot(snap => {
+            // Kategorien laden
+            userRef.collection('categories').onSnapshot(snap => {
+                categories = snap.docs.map(d => ({...d.data(), id: d.id}));
+                // Wenn noch keine Kategorien da sind, Standardkategorien anlegen
+                if (categories.length === 0) {
+                    setupDefaultsCloud();
+                } else {
+                    renderFilters();
+                    renderManagementUI();
+                }
+            });
+
+            // Ausgaben laden
+            userRef.collection('ausgaben').onSnapshot(snap => {
                 expenses = snap.docs.map(d => ({...d.data(), id: d.id}));
+                expenses.sort((a,b) => new Date(b.datum) - new Date(a.datum));
                 renderUI();
                 hideSplash();
-            }, err => {
-                console.error("Firestore Fehler:", err);
-                document.getElementById('statusText').innerText = "Regeln in Firebase prüfen!";
+            });
+        }
+
+        function setupDefaultsCloud() {
+            ['Essen', 'Wohnen', 'Gehalt', 'Freizeit'].forEach(n => { 
+                db.collection('users').doc(currentUser.uid).collection('categories').add({name: n}); 
             });
         }
 
         function renderUI() {
             const list = document.getElementById('expenseList');
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            
+            let filtered = expenses.filter(e => {
+                const matchFilter = activeFilter === 'all' || e.kategorieId === activeFilter;
+                const matchSearch = e.beschreibung.toLowerCase().includes(searchTerm);
+                return matchFilter && matchSearch;
+            });
+
             let total = 0;
             let html = "";
-            expenses.forEach(e => {
-                total += parseFloat(e.betrag);
+            
+            filtered.forEach(e => {
+                const cat = categories.find(c => c.id === e.kategorieId);
+                const isInc = cat?.name === 'Gehalt' || cat?.name === 'Einnahmen';
+                total += isInc ? parseFloat(e.betrag) : -parseFloat(e.betrag);
+                
+                let belegIcon = e.beleg ? `<i class="fas fa-paperclip text-slate-300 ml-2"></i>` : '';
+
                 html += `
-                <div class="bg-white p-5 rounded-2xl border border-slate-100 flex justify-between items-center shadow-sm">
-                    <div>
-                        <p class="font-bold text-slate-900">${e.beschreibung}</p>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">${e.datum}</p>
+                <div class="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex items-center justify-between action-card" onclick="editExpense('${e.id}')">
+                    <div class="flex items-center gap-4 flex-1 min-w-0">
+                        <div class="w-12 h-12 rounded-2xl ${isInc ? 'bg-emerald-50 text-emerald-500' : 'bg-indigo-50 text-indigo-500'} flex items-center justify-center shrink-0"><i class="fas ${isInc ? 'fa-arrow-up' : 'fa-arrow-down'}"></i></div>
+                        <div class="min-w-0 pr-2">
+                            <p class="font-bold text-slate-900 truncate uppercase text-[13px] tracking-tight">${e.beschreibung} ${belegIcon}</p>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase">${new Date(e.datum).toLocaleDateString('de-DE')} • ${cat?.name || 'Diverse'}</p>
+                        </div>
                     </div>
-                    <p class="font-black text-slate-900">${parseFloat(e.betrag).toFixed(2)} €</p>
+                    <p class="font-black ${isInc ? 'text-emerald-500' : 'text-slate-900'}">${isInc ? '+' : '-'}${parseFloat(e.betrag).toFixed(2)} €</p>
                 </div>`;
             });
-            list.innerHTML = html || '<div class="text-center py-20 text-slate-300">Noch keine Einträge</div>';
+            
+            list.innerHTML = html || '<div class="text-center py-20 text-slate-300 font-bold">Keine Einträge gefunden</div>';
             document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
         }
 
+        function renderFilters() {
+            var html = `<button onclick="setFilter('all')" class="px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase ${activeFilter==='all'?'bg-indigo-600 text-white':'bg-white text-slate-400 border'}">Alle</button>`;
+            categories.forEach(c => {
+                html += `<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase whitespace-nowrap ${activeFilter===c.id?'bg-indigo-600 text-white':'bg-white text-slate-400 border'}">${c.name}</button>`;
+            });
+            document.getElementById('filterBar').innerHTML = html;
+        }
+
+        window.setFilter = id => { activeFilter = id; renderFilters(); renderUI(); };
+        window.closeModal = id => document.getElementById(id).classList.add('hidden');
+        
+        // HINZUFÜGEN / BEARBEITEN
         document.getElementById('addExpenseBtn').onclick = () => {
+            document.getElementById('expenseForm').reset();
+            document.getElementById('editId').value = '';
             document.getElementById('datum').value = new Date().toISOString().split('T')[0];
+            document.getElementById('belegPreview').classList.add('hidden');
+            selectedCategory = categories[0]?.id;
+            document.getElementById('deleteBtn').classList.add('hidden');
+            document.getElementById('modalTitle').innerText = 'Neuer Eintrag';
             document.getElementById('addModal').classList.remove('hidden');
+            renderCategoryGrid();
         };
 
-        document.getElementById('expenseForm').onsubmit = async (ev) => {
+        window.editExpense = id => {
+            const e = expenses.find(x => x.id === id); if (!e) return;
+            document.getElementById('editId').value = e.id;
+            document.getElementById('betrag').value = e.betrag;
+            document.getElementById('beschreibung').value = e.beschreibung;
+            document.getElementById('datum').value = e.datum;
+            document.getElementById('beleg').value = e.beleg || '';
+            
+            if(e.beleg && e.beleg.startsWith('http')) {
+                document.getElementById('belegPreview').classList.remove('hidden');
+                document.getElementById('belegLink').href = e.beleg;
+            } else {
+                document.getElementById('belegPreview').classList.add('hidden');
+            }
+
+            selectedCategory = e.kategorieId;
+            document.getElementById('deleteBtn').classList.remove('hidden');
+            document.getElementById('modalTitle').innerText = 'Eintrag bearbeiten';
+            document.getElementById('addModal').classList.remove('hidden');
+            renderCategoryGrid();
+        };
+
+        // SPEICHERN
+        document.getElementById('expenseForm').onsubmit = ev => {
             ev.preventDefault();
             if(!currentUser) return;
 
+            const id = document.getElementById('editId').value;
             const data = {
                 betrag: parseFloat(document.getElementById('betrag').value),
                 beschreibung: document.getElementById('beschreibung').value.trim(),
                 datum: document.getElementById('datum').value,
+                beleg: document.getElementById('beleg').value.trim(),
+                kategorieId: selectedCategory,
                 ts: Date.now()
             };
-
-            try {
-                await db.collection('users').doc(currentUser.uid).collection('ausgaben').add(data);
-                closeModal('addModal');
-                document.getElementById('expenseForm').reset();
-            } catch(e) {
-                alert("Fehler beim Speichern: " + e.message);
+            
+            const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+            
+            if(id) {
+                col.doc(id).update(data).then(() => closeModal('addModal'));
+            } else {
+                col.add(data).then(() => closeModal('addModal'));
             }
         };
 
-        window.closeModal = id => document.getElementById(id).classList.add('hidden');
+        // LÖSCHEN
+        document.getElementById('deleteBtn').onclick = () => {
+            if(confirm("Diesen Eintrag wirklich löschen?")) {
+                const id = document.getElementById('editId').value;
+                db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(id).delete()
+                  .then(() => closeModal('addModal'));
+            }
+        };
+
+        function renderCategoryGrid() {
+            document.getElementById('categoryGrid').innerHTML = categories.map(c => `
+                <button type="button" onclick="selectedCategory='${c.id}';renderCategoryGrid()" class="category-pill px-4 py-3 rounded-xl border-2 text-[10px] font-bold uppercase ${selectedCategory===c.id?'selected':'bg-slate-50 text-slate-500'}">${c.name}</button>
+            `).join('');
+        }
+
+        // --- KATEGORIEN MANAGEMENT ---
+        function renderManagementUI() {
+            document.getElementById('manageCategoryList').innerHTML = categories.map(c => `
+                <div class="flex items-center gap-2 bg-slate-50 p-2 pl-4 rounded-xl border text-sm font-bold">
+                    <input type="text" value="${c.name}" onblur="updateCatName('${c.id}', this.value)" class="flex-1 bg-transparent outline-none">
+                    <button onclick="requestDeleteCategory('${c.id}')" class="w-8 h-8 text-rose-400"><i class="fas fa-times"></i></button>
+                </div>`).join('');
+        }
+
+        window.addNewCategory = () => {
+            const n = document.getElementById('newCatInput').value.trim(); if (!n) return;
+            db.collection('users').doc(currentUser.uid).collection('categories').add({name:n});
+            document.getElementById('newCatInput').value = "";
+        };
+
+        window.updateCatName = (id, val) => {
+            if (!val.trim()) return;
+            db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({name:val.trim()});
+        };
+
+        window.requestDeleteCategory = id => {
+            if (categories.length <= 1) { alert("Eine Kategorie muss übrig bleiben!"); return; }
+            if(confirm("Kategorie wirklich löschen? (Einträge bleiben bestehen)")) {
+                db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete();
+            }
+        };
+
+        // --- CSV IMPORT / EXPORT ---
+        async function handleImport(input) {
+            const file = input.files[0];
+            if (!file || !currentUser) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const text = e.target.result;
+                const lines = text.split('\n').filter(line => line.trim() !== '');
+                if (lines.length < 2) return;
+                
+                const batch = db.batch();
+                const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+                let count = 0;
+
+                for (let i = 1; i < lines.length; i++) {
+                    const values = lines[i].split(/[;,]/);
+                    if (values.length < 3) continue;
+                    const datum = values[0]?.trim() || new Date().toISOString().split('T')[0];
+                    const beschreibung = values[1]?.trim() || 'Import';
+                    const betrag = parseFloat(values[2]?.replace(',', '.')) || 0;
+                    const beleg = values[3]?.trim() || '';
+                    
+                    const newDocRef = col.doc();
+                    batch.set(newDocRef, { datum, beschreibung, betrag, beleg, kategorieId: categories[0]?.id, ts: Date.now() + i });
+                    count++;
+                }
+                
+                await batch.commit();
+                alert(`${count} Einträge importiert.`);
+                closeModal('dataModal');
+            };
+            reader.readAsText(file);
+        }
+
+        async function handleManualExport() {
+            if(expenses.length === 0) { alert("Keine Daten zum Exportieren."); return; }
+            const rows = expenses.map(e => {
+                const catName = categories.find(c => c.id === e.kategorieId)?.name || '';
+                return `${e.datum};${e.beschreibung};${e.betrag};${e.beleg || ''};${catName}`;
+            });
+            const csvData = "Datum;Beschreibung;Betrag;Beleg;Kategorie\n" + rows.join("\n");
+            const blob = new Blob(["\uFEFF" + csvData], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `budget_export.csv`;
+            link.click();
+        }
+
         function hideSplash() {
             document.getElementById('splashScreen').style.opacity = '0';
             setTimeout(() => document.getElementById('splashScreen').style.display = 'none', 500);
