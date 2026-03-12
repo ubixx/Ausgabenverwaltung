@@ -47,8 +47,30 @@
         <p id="statusText" class="text-slate-400 font-bold text-xs uppercase tracking-widest">Verbinde mit Cloud...</p>
     </div>
 
+    <!-- AUTH SCREEN -->
+    <div id="authScreen" class="hidden min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 z-50">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl text-center">
+            <div class="w-16 h-16 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6 shadow-lg">
+                <i class="fas fa-lock"></i>
+            </div>
+            <h2 class="text-2xl font-black text-slate-900 mb-2">Anmelden</h2>
+            <p class="text-sm text-slate-500 mb-8">Geräteübergreifend synchronisieren</p>
+            
+            <form id="authForm" class="space-y-4" onsubmit="event.preventDefault()">
+                <input type="email" id="authEmail" placeholder="E-Mail Adresse" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                <input type="password" id="authPassword" placeholder="Passwort (min. 6 Zeichen)" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                
+                <div class="flex gap-3 pt-4">
+                    <button type="button" onclick="handleLogin()" class="flex-1 bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Login</button>
+                    <button type="button" onclick="handleRegister()" class="flex-1 bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Registrieren</button>
+                </div>
+                <p id="authError" class="text-rose-500 text-sm font-bold mt-4 hidden"></p>
+            </form>
+        </div>
+    </div>
+
     <!-- MAIN APP UI -->
-    <div id="mainApp" class="flex flex-col min-h-screen">
+    <div id="mainApp" class="hidden flex flex-col min-h-screen">
         <header class="p-6 bg-white border-b border-slate-100 flex justify-between items-center sticky top-0 z-30">
             <div>
                 <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
@@ -80,7 +102,7 @@
         </div>
     </div>
 
-    <!-- SETTINGS MODAL (Import, Export, Kategorien) -->
+    <!-- SETTINGS MODAL -->
     <div id="dataModal" class="hidden fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl flex flex-col max-h-[90vh]">
             <div class="flex justify-between items-center mb-6">
@@ -88,7 +110,6 @@
                 <button onclick="closeModal('dataModal')" class="text-slate-400 p-2"><i class="fas fa-times"></i></button>
             </div>
             <div class="flex-1 overflow-y-auto no-scrollbar space-y-6">
-                <!-- CSV Bereich -->
                 <div class="space-y-4">
                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Daten-Management</label>
                     <div class="grid grid-cols-1 gap-3">
@@ -101,7 +122,6 @@
                         </button>
                     </div>
                 </div>
-                <!-- Kategorien Bereich -->
                 <div class="pt-4 border-t border-slate-100">
                     <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Kategorien Verwalten</label>
                     <div id="manageCategoryList" class="space-y-2 mb-4"></div>
@@ -109,6 +129,11 @@
                         <input type="text" id="newCatInput" placeholder="Neue Kategorie..." class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-300">
                         <button onclick="addNewCategory()" class="bg-indigo-600 text-white px-5 rounded-xl"><i class="fas fa-plus"></i></button>
                     </div>
+                </div>
+                <div class="pt-4 border-t border-slate-100">
+                    <button onclick="handleLogout()" class="w-full bg-rose-50 text-rose-600 font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-3 active:bg-rose-100 transition-colors">
+                        <i class="fas fa-sign-out-alt text-lg"></i> Abmelden
+                    </button>
                 </div>
             </div>
         </div>
@@ -129,11 +154,13 @@
                 </div>
                 <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                 
-                <!-- Beleg Feld -->
+                <!-- Beleg Feld mit verbesserter Link-Vorschau -->
                 <div class="relative">
-                    <input type="text" id="beleg" placeholder="Beleg (URL oder Notiz)" class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-sm">
+                    <input type="text" id="beleg" oninput="updateBelegLinkPreview(this.value)" placeholder="Beleg (URL oder Notiz)" class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-sm">
                     <div id="belegPreview" class="absolute right-4 top-1/2 -translate-y-1/2 hidden">
-                        <a href="#" id="belegLink" target="_blank" class="text-indigo-600"><i class="fas fa-external-link-alt"></i></a>
+                        <a href="#" id="belegLink" target="_blank" class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center transition-transform active:scale-90">
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
                     </div>
                 </div>
 
@@ -154,20 +181,14 @@
         var db = null;
         var currentUser = null;
 
-        // =========================================================================
-        // 🔴🔴🔴 HIER DEINE EIGENEN FIREBASE DATEN EINTRAGEN 🔴🔴🔴
-        // Kopiere den Block aus der Firebase Console unter Projekteinstellungen
-        // =========================================================================
-        // Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
-  authDomain: "meinbudgetcloud.firebaseapp.com",
-  projectId: "meinbudgetcloud",
-  storageBucket: "meinbudgetcloud.firebasestorage.app",
-  messagingSenderId: "594713378906",
-  appId: "1:594713378906:web:7929f7a875159336101863"
-};
-        // =========================================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
+            authDomain: "meinbudgetcloud.firebaseapp.com",
+            projectId: "meinbudgetcloud",
+            storageBucket: "meinbudgetcloud.firebasestorage.app",
+            messagingSenderId: "594713378906",
+            appId: "1:594713378906:web:7929f7a875159336101863"
+        };
 
         window.onload = function() {
             try {
@@ -179,32 +200,51 @@ const firebaseConfig = {
                     if (user) { 
                         currentUser = user; 
                         document.getElementById('cloudStatus').classList.replace('bg-slate-300', 'bg-emerald-500');
+                        document.getElementById('authScreen').classList.add('hidden');
+                        document.getElementById('mainApp').classList.remove('hidden');
                         startSync(); 
                     } else { 
-                        firebase.auth().signInAnonymously().catch(err => alert("Login Fehler: " + err.message));
+                        currentUser = null;
+                        hideSplash();
+                        document.getElementById('mainApp').classList.add('hidden');
+                        document.getElementById('authScreen').classList.remove('hidden');
                     }
                 });
             } catch(e) {
-                document.getElementById('statusText').innerText = "Verbindung fehlgeschlagen. Firebase Daten prüfen!";
+                document.getElementById('statusText').innerText = "Verbindung fehlgeschlagen.";
             }
         };
 
+        async function handleLogin() {
+            const email = document.getElementById('authEmail').value;
+            const pass = document.getElementById('authPassword').value;
+            if(!email || !pass) return showAuthError("Bitte Daten eingeben.");
+            try { await firebase.auth().signInWithEmailAndPassword(email, pass); } catch(e) { showAuthError(e.message); }
+        }
+
+        async function handleRegister() {
+            const email = document.getElementById('authEmail').value;
+            const pass = document.getElementById('authPassword').value;
+            if(!email || !pass) return showAuthError("Bitte Daten eingeben.");
+            try { await firebase.auth().createUserWithEmailAndPassword(email, pass); } catch(e) { showAuthError(e.message); }
+        }
+
+        function handleLogout() {
+            firebase.auth().signOut().then(() => {
+                closeModal('dataModal');
+                expenses = [];
+                categories = [];
+                renderUI();
+            });
+        }
+
         function startSync() {
             const userRef = db.collection('users').doc(currentUser.uid);
-            
-            // Kategorien laden
             userRef.collection('categories').onSnapshot(snap => {
                 categories = snap.docs.map(d => ({...d.data(), id: d.id}));
-                // Wenn noch keine Kategorien da sind, Standardkategorien anlegen
-                if (categories.length === 0) {
-                    setupDefaultsCloud();
-                } else {
-                    renderFilters();
-                    renderManagementUI();
-                }
+                if (categories.length === 0) setupDefaultsCloud();
+                else { renderFilters(); renderManagementUI(); }
             });
-
-            // Ausgaben laden
             userRef.collection('ausgaben').onSnapshot(snap => {
                 expenses = snap.docs.map(d => ({...d.data(), id: d.id}));
                 expenses.sort((a,b) => new Date(b.datum) - new Date(a.datum));
@@ -222,7 +262,6 @@ const firebaseConfig = {
         function renderUI() {
             const list = document.getElementById('expenseList');
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            
             let filtered = expenses.filter(e => {
                 const matchFilter = activeFilter === 'all' || e.kategorieId === activeFilter;
                 const matchSearch = e.beschreibung.toLowerCase().includes(searchTerm);
@@ -231,28 +270,31 @@ const firebaseConfig = {
 
             let total = 0;
             let html = "";
-            
             filtered.forEach(e => {
                 const cat = categories.find(c => c.id === e.kategorieId);
                 const isInc = cat?.name === 'Gehalt' || cat?.name === 'Einnahmen';
                 total += isInc ? parseFloat(e.betrag) : -parseFloat(e.betrag);
                 
-                let belegIcon = e.beleg ? `<i class="fas fa-paperclip text-slate-300 ml-2"></i>` : '';
+                // Büroklammer Icon mit StopPropagation, damit Link klickbar ist ohne das Modal zu triggern
+                let belegIcon = e.beleg && e.beleg.startsWith('http') ? 
+                    `<a href="${e.beleg}" target="_blank" onclick="event.stopPropagation()" class="ml-2 text-indigo-400 hover:text-indigo-600 p-1"><i class="fas fa-paperclip"></i></a>` : 
+                    (e.beleg ? `<i class="fas fa-sticky-note text-slate-300 ml-2" title="${e.beleg}"></i>` : '');
 
                 html += `
                 <div class="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex items-center justify-between action-card" onclick="editExpense('${e.id}')">
                     <div class="flex items-center gap-4 flex-1 min-w-0">
                         <div class="w-12 h-12 rounded-2xl ${isInc ? 'bg-emerald-50 text-emerald-500' : 'bg-indigo-50 text-indigo-500'} flex items-center justify-center shrink-0"><i class="fas ${isInc ? 'fa-arrow-up' : 'fa-arrow-down'}"></i></div>
                         <div class="min-w-0 pr-2">
-                            <p class="font-bold text-slate-900 truncate uppercase text-[13px] tracking-tight">${e.beschreibung} ${belegIcon}</p>
+                            <p class="font-bold text-slate-900 truncate uppercase text-[13px] tracking-tight flex items-center">
+                                <span class="truncate">${e.beschreibung}</span> ${belegIcon}
+                            </p>
                             <p class="text-[10px] text-slate-400 font-bold uppercase">${new Date(e.datum).toLocaleDateString('de-DE')} • ${cat?.name || 'Diverse'}</p>
                         </div>
                     </div>
                     <p class="font-black ${isInc ? 'text-emerald-500' : 'text-slate-900'}">${isInc ? '+' : '-'}${parseFloat(e.betrag).toFixed(2)} €</p>
                 </div>`;
             });
-            
-            list.innerHTML = html || '<div class="text-center py-20 text-slate-300 font-bold">Keine Einträge gefunden</div>';
+            list.innerHTML = html || '<div class="text-center py-20 text-slate-300 font-bold">Keine Einträge</div>';
             document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
         }
 
@@ -267,12 +309,11 @@ const firebaseConfig = {
         window.setFilter = id => { activeFilter = id; renderFilters(); renderUI(); };
         window.closeModal = id => document.getElementById(id).classList.add('hidden');
         
-        // HINZUFÜGEN / BEARBEITEN
         document.getElementById('addExpenseBtn').onclick = () => {
             document.getElementById('expenseForm').reset();
             document.getElementById('editId').value = '';
             document.getElementById('datum').value = new Date().toISOString().split('T')[0];
-            document.getElementById('belegPreview').classList.add('hidden');
+            updateBelegLinkPreview('');
             selectedCategory = categories[0]?.id;
             document.getElementById('deleteBtn').classList.add('hidden');
             document.getElementById('modalTitle').innerText = 'Neuer Eintrag';
@@ -287,14 +328,7 @@ const firebaseConfig = {
             document.getElementById('beschreibung').value = e.beschreibung;
             document.getElementById('datum').value = e.datum;
             document.getElementById('beleg').value = e.beleg || '';
-            
-            if(e.beleg && e.beleg.startsWith('http')) {
-                document.getElementById('belegPreview').classList.remove('hidden');
-                document.getElementById('belegLink').href = e.beleg;
-            } else {
-                document.getElementById('belegPreview').classList.add('hidden');
-            }
-
+            updateBelegLinkPreview(e.beleg || '');
             selectedCategory = e.kategorieId;
             document.getElementById('deleteBtn').classList.remove('hidden');
             document.getElementById('modalTitle').innerText = 'Eintrag bearbeiten';
@@ -302,11 +336,19 @@ const firebaseConfig = {
             renderCategoryGrid();
         };
 
-        // SPEICHERN
+        window.updateBelegLinkPreview = val => {
+            const preview = document.getElementById('belegPreview');
+            const link = document.getElementById('belegLink');
+            if(val && (val.startsWith('http://') || val.startsWith('https://'))) {
+                preview.classList.remove('hidden');
+                link.href = val;
+            } else {
+                preview.classList.add('hidden');
+            }
+        };
+
         document.getElementById('expenseForm').onsubmit = ev => {
             ev.preventDefault();
-            if(!currentUser) return;
-
             const id = document.getElementById('editId').value;
             const data = {
                 betrag: parseFloat(document.getElementById('betrag').value),
@@ -316,22 +358,14 @@ const firebaseConfig = {
                 kategorieId: selectedCategory,
                 ts: Date.now()
             };
-            
             const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
-            
-            if(id) {
-                col.doc(id).update(data).then(() => closeModal('addModal'));
-            } else {
-                col.add(data).then(() => closeModal('addModal'));
-            }
+            if(id) col.doc(id).update(data).then(() => closeModal('addModal'));
+            else col.add(data).then(() => closeModal('addModal'));
         };
 
-        // LÖSCHEN
         document.getElementById('deleteBtn').onclick = () => {
-            if(confirm("Diesen Eintrag wirklich löschen?")) {
-                const id = document.getElementById('editId').value;
-                db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(id).delete()
-                  .then(() => closeModal('addModal'));
+            if(confirm("Löschen?")) {
+                db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete().then(() => closeModal('addModal'));
             }
         };
 
@@ -341,7 +375,6 @@ const firebaseConfig = {
             `).join('');
         }
 
-        // --- KATEGORIEN MANAGEMENT ---
         function renderManagementUI() {
             document.getElementById('manageCategoryList').innerHTML = categories.map(c => `
                 <div class="flex items-center gap-2 bg-slate-50 p-2 pl-4 rounded-xl border text-sm font-bold">
@@ -351,76 +384,37 @@ const firebaseConfig = {
         }
 
         window.addNewCategory = () => {
-            const n = document.getElementById('newCatInput').value.trim(); if (!n) return;
-            db.collection('users').doc(currentUser.uid).collection('categories').add({name:n});
+            const n = document.getElementById('newCatInput').value.trim(); if (n) db.collection('users').doc(currentUser.uid).collection('categories').add({name:n});
             document.getElementById('newCatInput').value = "";
         };
 
-        window.updateCatName = (id, val) => {
-            if (!val.trim()) return;
-            db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({name:val.trim()});
-        };
+        window.updateCatName = (id, val) => { if(val.trim()) db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({name:val.trim()}); };
+        window.requestDeleteCategory = id => { if(categories.length > 1 && confirm("Löschen?")) db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete(); };
 
-        window.requestDeleteCategory = id => {
-            if (categories.length <= 1) { alert("Eine Kategorie muss übrig bleiben!"); return; }
-            if(confirm("Kategorie wirklich löschen? (Einträge bleiben bestehen)")) {
-                db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete();
-            }
-        };
-
-        // --- CSV IMPORT / EXPORT ---
         async function handleImport(input) {
-            const file = input.files[0];
-            if (!file || !currentUser) return;
+            const file = input.files[0]; if (!file) return;
             const reader = new FileReader();
             reader.onload = async (e) => {
-                const text = e.target.result;
-                const lines = text.split('\n').filter(line => line.trim() !== '');
-                if (lines.length < 2) return;
-                
+                const lines = e.target.result.split('\n').filter(l => l.trim());
                 const batch = db.batch();
                 const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
-                let count = 0;
-
                 for (let i = 1; i < lines.length; i++) {
-                    const values = lines[i].split(/[;,]/);
-                    if (values.length < 3) continue;
-                    const datum = values[0]?.trim() || new Date().toISOString().split('T')[0];
-                    const beschreibung = values[1]?.trim() || 'Import';
-                    const betrag = parseFloat(values[2]?.replace(',', '.')) || 0;
-                    const beleg = values[3]?.trim() || '';
-                    
-                    const newDocRef = col.doc();
-                    batch.set(newDocRef, { datum, beschreibung, betrag, beleg, kategorieId: categories[0]?.id, ts: Date.now() + i });
-                    count++;
+                    const v = lines[i].split(/[;,]/);
+                    batch.set(col.doc(), { datum: v[0]||'', beschreibung: v[1]||'', betrag: parseFloat(v[2])||0, beleg: v[3]||'', kategorieId: categories[0].id, ts: Date.now()+i });
                 }
-                
-                await batch.commit();
-                alert(`${count} Einträge importiert.`);
-                closeModal('dataModal');
+                await batch.commit(); closeModal('dataModal');
             };
             reader.readAsText(file);
         }
 
         async function handleManualExport() {
-            if(expenses.length === 0) { alert("Keine Daten zum Exportieren."); return; }
-            const rows = expenses.map(e => {
-                const catName = categories.find(c => c.id === e.kategorieId)?.name || '';
-                return `${e.datum};${e.beschreibung};${e.betrag};${e.beleg || ''};${catName}`;
-            });
-            const csvData = "Datum;Beschreibung;Betrag;Beleg;Kategorie\n" + rows.join("\n");
-            const blob = new Blob(["\uFEFF" + csvData], { type: 'text/csv;charset=utf-8;' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = `budget_export.csv`;
-            link.click();
+            const rows = expenses.map(e => `${e.datum};${e.beschreibung};${e.betrag};${e.beleg||''}`);
+            const blob = new Blob(["\uFEFF" + "Datum;Beschreibung;Betrag;Beleg\n" + rows.join("\n")], { type: 'text/csv' });
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `budget.csv`; link.click();
         }
 
-        function hideSplash() {
-            document.getElementById('splashScreen').style.opacity = '0';
-            setTimeout(() => document.getElementById('splashScreen').style.display = 'none', 500);
-        }
+        function hideSplash() { document.getElementById('splashScreen').style.opacity = '0'; setTimeout(() => document.getElementById('splashScreen').style.display = 'none', 500); }
+        function showAuthError(m) { const e = document.getElementById('authError'); e.innerText = m; e.classList.remove('hidden'); }
     </script>
 </body>
 </html>
