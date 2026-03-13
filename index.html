@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Budget Cloud Komplett</title>
+    <title>Budget Cloud Pro</title>
     
     <!-- PWA & Mobile Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -13,6 +13,9 @@
     <!-- Tailwind CSS & FontAwesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- SheetJS für Excel Import -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -32,56 +35,87 @@
         .category-pill.selected { background-color: var(--app-primary) !important; color: white !important; border-color: var(--app-primary) !important; }
         .action-card { transition: transform 0.1s active; cursor: pointer; }
         .action-card:active { transform: scale(0.98); }
-        .scroll-container { -webkit-overflow-scrolling: touch; }
+        
+        #toast {
+            visibility: hidden;
+            min-width: 280px;
+            background-color: #1e293b;
+            color: #fff;
+            text-align: center;
+            border-radius: 16px;
+            padding: 20px;
+            position: fixed;
+            z-index: 9999;
+            left: 50%;
+            bottom: 40px;
+            transform: translateX(-50%);
+            font-weight: bold;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
+        }
+        #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 40px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 40px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+        
+        .img-preview { object-fit: cover; border-radius: 12px; }
+        .receipt-badge { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        
+        .stat-bar-bg { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+        .stat-bar-fill { height: 100%; background: var(--app-primary); transition: width 0.5s ease-in-out; }
     </style>
 </head>
 <body class="min-h-screen font-sans text-slate-800">
 
-    <!-- SPLASH SCREEN -->
+    <div id="toast">Nachricht</div>
+
     <div id="splashScreen" class="fixed inset-0 bg-white z-[1000] flex flex-col items-center justify-center p-8 text-center">
         <div class="w-20 h-20 bg-indigo-600 text-white rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-2xl">
             <i class="fas fa-wallet"></i>
         </div>
-        <p id="statusText" class="text-slate-400 font-bold text-xs uppercase tracking-widest">Verbinde mit Cloud...</p>
+        <p id="statusText" class="text-slate-400 font-bold text-xs uppercase tracking-widest">Initialisiere...</p>
     </div>
 
-    <!-- AUTH SCREEN -->
     <div id="authScreen" class="hidden min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 z-50">
         <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl text-center">
             <div class="w-16 h-16 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6 shadow-lg">
                 <i class="fas fa-lock"></i>
             </div>
             <h2 class="text-2xl font-black text-slate-900 mb-2">Anmelden</h2>
-            <p class="text-sm text-slate-500 mb-8">Geräteübergreifend synchronisieren</p>
-            
             <form id="authForm" class="space-y-4" onsubmit="event.preventDefault()">
-                <input type="email" id="authEmail" placeholder="E-Mail Adresse" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
-                <input type="password" id="authPassword" placeholder="Passwort (min. 6 Zeichen)" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
-                
-                <div class="flex gap-3 pt-4">
-                    <button type="button" onclick="handleLogin()" class="flex-1 bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Login</button>
-                    <button type="button" onclick="handleRegister()" class="flex-1 bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Registrieren</button>
+                <input type="email" id="authEmail" placeholder="E-Mail" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                <input type="password" id="authPassword" placeholder="Passwort" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="handleLogin()" class="flex-1 bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg">Login</button>
+                    <button type="button" onclick="handleRegister()" class="flex-1 bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg">Neu hier?</button>
                 </div>
-                <p id="authError" class="text-rose-500 text-sm font-bold mt-4 hidden"></p>
             </form>
         </div>
     </div>
 
-    <!-- MAIN APP UI -->
     <div id="mainApp" class="hidden flex flex-col min-h-screen">
-        <header class="p-6 bg-white border-b border-slate-100 flex justify-between items-center sticky top-0 z-30">
-            <div>
-                <h2 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
-                    Gesamtsaldo <span id="cloudStatus" class="w-2 h-2 rounded-full bg-slate-300"></span>
-                </h2>
-                <div id="totalAmount" class="text-3xl font-black text-slate-900 tracking-tight">0,00 €</div>
+        <header class="p-6 bg-white border-b border-slate-100 sticky top-0 z-30">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h1 class="text-3xl font-black text-slate-900 tracking-tight" id="totalAmount">0,00 €</h1>
+                    <p class="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1" id="totalCountBadge">0 Einträge</p>
+                </div>
+                <button onclick="document.getElementById('dataModal').classList.remove('hidden')" class="w-12 h-12 bg-slate-50 text-slate-900 rounded-2xl flex items-center justify-center text-xl active:scale-95 transition-transform">
+                    <i class="fas fa-cog"></i>
+                </button>
             </div>
-            <button onclick="document.getElementById('dataModal').classList.remove('hidden')" class="w-12 h-12 bg-slate-50 text-slate-500 rounded-2xl flex items-center justify-center border border-slate-100 shadow-sm">
-                <i class="fas fa-cog"></i>
-            </button>
+            <div class="mt-6 bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-bold text-slate-400 uppercase tracking-widest" id="monthLabel">Monat</span>
+                    <span class="text-xs font-bold text-indigo-600" id="monthCountBadge">0 Buchungen</span>
+                </div>
+                <div class="text-lg font-black text-slate-900 mb-3" id="monthSpending">0,00 € Ausgaben</div>
+                <div class="stat-bar-bg">
+                    <div class="stat-bar-fill w-0" id="monthBarFill"></div>
+                </div>
+            </div>
         </header>
 
-        <div class="bg-white/95 backdrop-blur-md border-b border-slate-100 sticky top-[93px] z-20">
+        <div class="bg-white/95 backdrop-blur-md border-b border-slate-100 sticky top-[154px] z-20">
             <div class="px-6 py-4">
                 <div class="relative">
                     <input type="text" id="searchInput" placeholder="Suchen..." onkeyup="renderUI()" class="w-full p-4 pl-12 bg-slate-100/50 border border-transparent rounded-2xl text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all">
@@ -91,7 +125,7 @@
             <div id="filterBar" class="px-6 pb-4 flex gap-2 overflow-x-auto no-scrollbar scroll-container"></div>
         </div>
 
-        <div class="flex-1 p-6 space-y-4 pb-40 overflow-y-auto scroll-container" id="expenseList"></div>
+        <div class="flex-1 p-6 space-y-4 pb-40 overflow-y-auto" id="expenseList"></div>
 
         <div class="fixed bottom-0 left-0 right-0 p-8 flex justify-center pointer-events-none z-40 mb-[env(safe-area-inset-bottom)]">
             <button id="addExpenseBtn" class="w-full max-w-md bg-indigo-600 text-white font-bold py-5 rounded-2xl flex items-center justify-center gap-3 pointer-events-auto text-lg shadow-xl active:bg-indigo-800 transition-all">
@@ -107,66 +141,104 @@
                 <h3 class="text-xl font-black text-slate-900">Einstellungen</h3>
                 <button onclick="closeModal('dataModal')" class="text-slate-400 p-2"><i class="fas fa-times"></i></button>
             </div>
-            <div class="flex-1 overflow-y-auto no-scrollbar space-y-6">
-                <div class="space-y-4">
-                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Daten-Management</label>
-                    <div class="grid grid-cols-1 gap-3">
-                        <label class="bg-indigo-50 text-indigo-600 font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-3 cursor-pointer border border-indigo-100 active:bg-indigo-200 transition-colors">
-                            <i class="fas fa-file-import text-lg"></i> CSV Import (Deutsch)
-                            <input type="file" accept=".csv" class="hidden" onchange="handleImport(this)">
+            <div class="flex-1 overflow-y-auto no-scrollbar space-y-8">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-4">Kategorien verwalten</label>
+                    <div id="settingsCategoryList" class="space-y-2 mb-4"></div>
+                    <div class="flex gap-2">
+                        <input type="text" id="newCatInput" placeholder="Neue Kategorie..." class="flex-1 p-3 bg-slate-100 rounded-xl text-sm font-bold outline-none">
+                        <button onclick="addNewCategory()" class="bg-indigo-600 text-white px-4 rounded-xl font-bold"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-4">Daten Export & Import</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="exportToCSV()" class="bg-slate-50 text-slate-900 font-bold py-4 rounded-2xl text-xs border border-slate-100">
+                            <i class="fas fa-file-export mr-2"></i>Export CSV
+                        </button>
+                        <label class="bg-slate-50 text-slate-900 font-bold py-4 rounded-2xl text-xs border border-slate-100 flex items-center justify-center cursor-pointer">
+                            <i class="fas fa-file-import mr-2"></i>Import CSV/Excel
+                            <input type="file" id="fileImport" accept=".csv, .xlsx, .xls" class="hidden" onchange="importData(this)">
                         </label>
-                        <button onclick="handleManualExport()" class="bg-slate-900 text-white font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-3 shadow-lg active:bg-slate-800 transition-all">
-                            <i class="fas fa-file-export text-lg"></i> Als CSV Exportieren
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-4">Account</label>
+                    <div class="grid grid-cols-1 gap-3">
+                        <button onclick="openConfirm('Alle Daten löschen?', 'Wirklich ALLES löschen?', deleteAllData)" class="bg-rose-50 text-rose-600 font-bold py-4 rounded-2xl text-sm border border-rose-100">
+                            Alle Daten löschen
+                        </button>
+                        <button onclick="handleLogout()" class="bg-slate-900 text-white font-bold py-4 rounded-2xl text-sm">
+                            Abmelden
                         </button>
                     </div>
-                </div>
-                <div class="pt-4 border-t border-slate-100">
-                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Kategorien Verwalten</label>
-                    <div id="manageCategoryList" class="space-y-2 mb-4"></div>
-                    <div class="flex gap-2">
-                        <input type="text" id="newCatInput" placeholder="Neue Kategorie..." class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-300">
-                        <button onclick="addNewCategory()" class="bg-indigo-600 text-white px-5 rounded-xl"><i class="fas fa-plus"></i></button>
-                    </div>
-                </div>
-                <div class="pt-4 border-t border-slate-100">
-                    <button onclick="handleLogout()" class="w-full bg-rose-50 text-rose-600 font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-3 active:bg-rose-100 transition-colors">
-                        <i class="fas fa-sign-out-alt text-lg"></i> Abmelden
-                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ADD/EDIT MODAL -->
+    <!-- ENTRY MODAL -->
     <div id="addModal" class="hidden fixed inset-0 bg-slate-900/60 z-[600] flex items-end sm:items-center justify-center">
-        <div class="bg-white w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[95vh] mb-[env(safe-area-inset-bottom)]">
+        <div class="bg-white w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[95vh]">
              <div class="flex justify-between items-center mb-6">
                 <h3 id="modalTitle" class="text-xl font-black text-slate-900">Eintrag</h3>
                 <button onclick="closeModal('addModal')" class="w-10 h-10 bg-slate-50 text-slate-400 rounded-full flex items-center justify-center"><i class="fas fa-times"></i></button>
             </div>
-            <form id="expenseForm" class="space-y-4">
+            <form id="expenseForm" class="space-y-4" onsubmit="handleFormSubmit(event)">
                 <input type="hidden" id="editId">
                 <div class="grid grid-cols-2 gap-4">
                     <input type="number" id="betrag" placeholder="0,00" step="0.01" required class="w-full p-4 bg-slate-50 rounded-2xl text-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                     <input type="date" id="datum" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                 </div>
-                <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                <input type="text" id="beschreibung" placeholder="Beschreibung" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                 
-                <div class="relative">
-                    <input type="text" id="beleg" oninput="updateBelegLinkPreview(this.value)" placeholder="Beleg (URL oder Notiz)" class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-sm">
-                    <div id="belegPreview" class="absolute right-4 top-1/2 -translate-y-1/2 hidden">
-                        <a href="#" id="belegLink" target="_blank" class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center transition-transform active:scale-90">
-                            <i class="fas fa-external-link-alt"></i>
-                        </a>
+                <div class="space-y-3">
+                    <div class="relative">
+                        <input type="text" id="beleg" placeholder="Link oder Beleg-Nr." class="w-full p-4 pr-24 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-sm">
+                        <div class="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                            <label class="w-10 h-10 bg-white border border-slate-100 rounded-xl flex items-center justify-center text-slate-400 cursor-pointer active:bg-slate-50">
+                                <i class="fas fa-camera"></i>
+                                <input type="file" id="belegFoto" accept="image/*" class="hidden" onchange="handlePhotoUpload(this)">
+                            </label>
+                        </div>
+                    </div>
+                    <div id="photoPreviewContainer" class="hidden relative inline-block">
+                        <img id="photoPreview" class="w-20 h-20 img-preview border-2 border-indigo-100" onclick="viewPhoto(this.src)">
+                        <button type="button" onclick="removePhoto()" class="absolute -top-2 -right-2 bg-rose-500 text-white w-6 h-6 rounded-full text-[10px] flex items-center justify-center shadow-lg"><i class="fas fa-times"></i></button>
                     </div>
                 </div>
 
                 <div id="categoryGrid" class="flex flex-wrap gap-2"></div>
+                
                 <div class="flex gap-4 pt-4">
                     <button type="submit" class="flex-1 bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-lg active:scale-95 transition-transform">Speichern</button>
-                    <button type="button" id="deleteBtn" class="hidden bg-rose-50 text-rose-500 font-bold px-6 rounded-2xl active:bg-rose-100"><i class="fas fa-trash-alt"></i></button>
+                    <button type="button" id="deleteBtn" onclick="openConfirm('Eintrag löschen?', 'Soll dieser Eintrag wirklich entfernt werden?', deleteCurrentEntry)" class="hidden bg-rose-50 text-rose-500 font-bold px-6 rounded-2xl">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- VIEW PHOTO MODAL -->
+    <div id="viewPhotoModal" class="hidden fixed inset-0 bg-slate-900/95 z-[9999] flex items-center justify-center p-4" onclick="closeModal('viewPhotoModal')">
+        <div class="relative max-w-full max-h-full" onclick="event.stopPropagation()">
+            <img id="fullPhoto" class="rounded-2xl max-h-[85vh] w-auto shadow-2xl">
+            <button onclick="closeModal('viewPhotoModal')" class="absolute -top-12 right-0 text-white text-2xl p-4"><i class="fas fa-times"></i> Schließen</button>
+        </div>
+    </div>
+
+    <!-- CUSTOM CONFIRM MODAL -->
+    <div id="confirmModal" class="hidden fixed inset-0 bg-slate-900/80 z-[9000] flex items-center justify-center p-6 backdrop-blur-sm">
+        <div class="bg-white w-full max-sm rounded-[2.5rem] p-8 shadow-2xl text-center">
+            <h3 id="confirmTitle" class="text-xl font-black text-slate-900 mb-2">Bist du sicher?</h3>
+            <p id="confirmText" class="text-slate-500 text-sm mb-8">Diese Aktion kann nicht rückgängig gemacht werden.</p>
+            <div class="flex gap-3">
+                <button onclick="closeModal('confirmModal')" class="flex-1 bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl">Abbrechen</button>
+                <button id="confirmActionBtn" class="flex-1 bg-rose-500 text-white font-bold py-4 rounded-2xl">Löschen</button>
+            </div>
         </div>
     </div>
 
@@ -175,8 +247,10 @@
         var categories = [];
         var activeFilter = 'all';
         var selectedCategory = '';
+        var currentPhotoBase64 = null;
         var db = null;
         var currentUser = null;
+        let currentConfirmCallback = null;
 
         const firebaseConfig = {
             apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
@@ -189,14 +263,13 @@
 
         window.onload = function() {
             try {
-                if (!firebase.apps.length) {
-                    firebase.initializeApp(firebaseConfig);
-                }
+                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                 db = firebase.firestore();
                 firebase.auth().onAuthStateChanged(user => {
                     if (user) { 
                         currentUser = user; 
-                        document.getElementById('cloudStatus').classList.replace('bg-slate-300', 'bg-emerald-500');
+                        const cloudIndicator = document.getElementById('cloudStatus');
+                        if (cloudIndicator) cloudIndicator.className = 'w-2 h-2 rounded-full bg-emerald-500';
                         document.getElementById('authScreen').classList.add('hidden');
                         document.getElementById('mainApp').classList.remove('hidden');
                         startSync(); 
@@ -207,110 +280,310 @@
                         document.getElementById('authScreen').classList.remove('hidden');
                     }
                 });
-            } catch(e) {
-                document.getElementById('statusText').innerText = "Fehler beim Starten.";
-            }
+            } catch(e) { console.error(e); }
         };
 
-        async function handleLogin() {
-            const email = document.getElementById('authEmail').value;
-            const pass = document.getElementById('authPassword').value;
-            if(!email || !pass) return showAuthError("E-Mail & Passwort nötig.");
-            try { await firebase.auth().signInWithEmailAndPassword(email, pass); } catch(e) { showAuthError(e.message); }
-        }
-
-        async function handleRegister() {
-            const email = document.getElementById('authEmail').value;
-            const pass = document.getElementById('authPassword').value;
-            if(!email || !pass) return showAuthError("E-Mail & Passwort nötig.");
-            try { await firebase.auth().createUserWithEmailAndPassword(email, pass); } catch(e) { showAuthError(e.message); }
-        }
-
-        function handleLogout() {
-            firebase.auth().signOut().then(() => {
-                closeModal('dataModal');
-                expenses = [];
-                categories = [];
-                renderUI();
-            });
-        }
-
         function startSync() {
+            if (!currentUser) return;
             const userRef = db.collection('users').doc(currentUser.uid);
+            
             userRef.collection('categories').onSnapshot(snap => {
                 categories = snap.docs.map(d => ({...d.data(), id: d.id}));
-                if (categories.length === 0) setupDefaultsCloud();
-                else { renderFilters(); renderManagementUI(); }
-            });
+                renderFilters(); 
+                renderCategoryGrid(); 
+                renderSettingsCategories();
+            }, err => console.error("Firestore error categories:", err));
+
             userRef.collection('ausgaben').onSnapshot(snap => {
                 expenses = snap.docs.map(d => ({...d.data(), id: d.id}));
                 expenses.sort((a,b) => new Date(b.datum) - new Date(a.datum));
                 renderUI();
+                renderStats();
                 hideSplash();
-            });
-        }
-
-        function setupDefaultsCloud() {
-            ['Essen', 'Wohnen', 'Gehalt', 'Freizeit'].forEach(n => { 
-                db.collection('users').doc(currentUser.uid).collection('categories').add({name: n}); 
-            });
+            }, err => console.error("Firestore error expenses:", err));
         }
 
         function renderUI() {
             const list = document.getElementById('expenseList');
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             let filtered = expenses.filter(e => {
-                const matchFilter = activeFilter === 'all' || e.kategorieId === activeFilter;
-                const matchSearch = e.beschreibung.toLowerCase().includes(searchTerm);
-                return matchFilter && matchSearch;
+                const matchesFilter = (activeFilter === 'all' || e.kategorieId === activeFilter);
+                const matchesSearch = (e.beschreibung||'').toLowerCase().includes(searchTerm) || (e.beleg||'').toLowerCase().includes(searchTerm);
+                return matchesFilter && matchesSearch;
             });
-
+            
             let total = 0;
             let html = "";
             filtered.forEach(e => {
                 const cat = categories.find(c => c.id === e.kategorieId);
-                const isInc = cat?.name === 'Gehalt' || cat?.name === 'Einnahmen';
+                const isInc = ['Gehalt', 'Einnahmen', 'Lohn', 'Bonus'].includes(cat?.name?.trim());
                 total += isInc ? parseFloat(e.betrag) : -parseFloat(e.betrag);
                 
-                let belegIcon = e.beleg && e.beleg.startsWith('http') ? 
-                    `<a href="${e.beleg}" target="_blank" onclick="event.stopPropagation()" class="ml-2 text-indigo-400 hover:text-indigo-600 p-1"><i class="fas fa-paperclip"></i></a>` : 
-                    (e.beleg ? `<i class="fas fa-sticky-note text-slate-300 ml-2" title="${e.beleg}"></i>` : '');
+                const hasPhoto = !!e.foto;
+                const hasLink = (e.beleg||'').startsWith('http');
 
                 html += `
-                <div class="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex items-center justify-between action-card" onclick="editExpense('${e.id}')">
+                <div class="bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex items-center justify-between action-card" onclick="handleEntryClick('${e.id}', event)">
                     <div class="flex items-center gap-4 flex-1 min-w-0">
-                        <div class="w-12 h-12 rounded-2xl ${isInc ? 'bg-emerald-50 text-emerald-500' : 'bg-indigo-50 text-indigo-500'} flex items-center justify-center shrink-0"><i class="fas ${isInc ? 'fa-arrow-up' : 'fa-arrow-down'}"></i></div>
+                        <div class="w-12 h-12 rounded-2xl ${isInc ? 'bg-emerald-50 text-emerald-500' : 'bg-indigo-50 text-indigo-500'} flex items-center justify-center shrink-0">
+                            <i class="fas ${isInc ? 'fa-plus' : 'fa-minus'}"></i>
+                        </div>
                         <div class="min-w-0 pr-2">
-                            <p class="font-bold text-slate-900 truncate uppercase text-[13px] tracking-tight flex items-center">
-                                <span class="truncate">${e.beschreibung}</span> ${belegIcon}
+                            <p class="font-bold text-slate-900 truncate uppercase text-[12px] tracking-tight flex items-center gap-2">
+                                ${e.beschreibung}
+                                ${hasPhoto || hasLink ? `<button onclick="triggerReceipt('${e.id}', event)" class="receipt-badge w-6 h-6 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center text-[10px]"><i class="fas fa-paperclip"></i></button>` : ''}
                             </p>
-                            <p class="text-[10px] text-slate-400 font-bold uppercase">${new Date(e.datum).toLocaleDateString('de-DE')} • ${cat?.name || 'Diverse'}</p>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase">
+                                ${new Date(e.datum).toLocaleDateString('de-DE')} • ${cat?.name || 'Diverse'}
+                            </p>
                         </div>
                     </div>
-                    <p class="font-black ${isInc ? 'text-emerald-500' : 'text-slate-900'}">${isInc ? '+' : '-'}${parseFloat(e.betrag).toFixed(2)} €</p>
+                    <p class="font-black ${isInc ? 'text-emerald-500' : 'text-slate-900'} shrink-0 ml-2">${isInc ? '+' : '-'}${parseFloat(e.betrag).toFixed(2)} €</p>
                 </div>`;
             });
             list.innerHTML = html || '<div class="text-center py-20 text-slate-300 font-bold">Keine Einträge</div>';
             document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
+            document.getElementById('totalCountBadge').innerText = `${expenses.length} Einträge`;
         }
 
-        function renderFilters() {
-            var html = `<button onclick="setFilter('all')" class="px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase ${activeFilter==='all'?'bg-indigo-600 text-white':'bg-white text-slate-400 border'}">Alle</button>`;
-            categories.forEach(c => {
-                html += `<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase whitespace-nowrap ${activeFilter===c.id?'bg-indigo-600 text-white':'bg-white text-slate-400 border'}">${c.name}</button>`;
+        function renderStats() {
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+            
+            let monthTotalOut = 0;
+            let monthTotalIn = 0;
+            let monthEntryCount = 0;
+            
+            expenses.forEach(e => {
+                const d = new Date(e.datum);
+                if(d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+                    monthEntryCount++;
+                    const cat = categories.find(c => c.id === e.kategorieId);
+                    const isInc = ['Gehalt', 'Einnahmen', 'Lohn', 'Bonus'].includes(cat?.name?.trim());
+                    if(isInc) monthTotalIn += parseFloat(e.betrag);
+                    else monthTotalOut += parseFloat(e.betrag);
+                }
             });
-            document.getElementById('filterBar').innerHTML = html;
+
+            document.getElementById('monthSpending').innerText = `${monthTotalOut.toFixed(2)} € Ausgaben`;
+            document.getElementById('monthCountBadge').innerText = `${monthEntryCount} Buchung${monthEntryCount === 1 ? '' : 'en'}`;
+            
+            const reference = monthTotalIn > 0 ? monthTotalIn : 2000;
+            const percentage = Math.min((monthTotalOut / reference) * 100, 100);
+            document.getElementById('monthBarFill').style.width = percentage + '%';
+            
+            const monthNames = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+            document.getElementById('monthLabel').innerText = monthNames[currentMonth];
         }
 
-        window.setFilter = id => { activeFilter = id; renderFilters(); renderUI(); };
+        // Export mit deutschem Format und BOM für Excel/Umlaute
+        window.exportToCSV = () => {
+            if (expenses.length === 0) { showToast("Keine Daten zum Exportieren"); return; }
+            
+            // BOM für UTF-8 hinzufügen (hilft Excel bei Umlauten)
+            let csv = "\uFEFFDatum;Beschreibung;Betrag;Kategorie;Beleg\n";
+            
+            expenses.forEach(e => {
+                const cat = categories.find(c => c.id === e.kategorieId);
+                // Datum von YYYY-MM-DD in DD.MM.YYYY umwandeln
+                const dateParts = e.datum.split('-');
+                const germanDate = `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`;
+                // Betrag mit Komma statt Punkt für deutsches Excel
+                const betragFormatted = parseFloat(e.betrag).toFixed(2).replace('.', ',');
+                
+                csv += `${germanDate};${e.beschreibung};${betragFormatted};${cat?.name || 'Diverse'};${e.beleg || ''}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `budget_export_${new Date().toLocaleDateString('de-DE').replace(/\./g, '-')}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // Import mit Excel & CSV Unterstützung
+    window.importData = (input) => {
+        const file = input.files[0];
+        if (!file) return;
+        
+        const isExcel = file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx');
+
+        if (isExcel) {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    // raw: false ensures wir formatierte Datumstexte erhalten (z.B. yyyy-mm-dd) anstatt interner Excel-Zahlen
+                    const jsonRows = XLSX.utils.sheet_to_json(sheet, {header: 1, raw: false, dateNF: 'yyyy-mm-dd', defval: ""});
+                    processImportRows(jsonRows.filter(r => r.length > 0));
+                } catch(err) {
+                    showToast("Fehler beim Lesen der Excel-Datei.");
+                    console.error(err);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        } else {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const text = e.target.result;
+                const rows = text.split(/\r?\n/).filter(r => r.trim() !== '');
+                if (rows.length < 2) return;
+
+                const firstRow = rows[0];
+                const delimiter = (firstRow.match(/;/g) || []).length >= (firstRow.match(/,/g) || []).length ? ';' : ',';
+                
+                const rowsData = rows.map(r => r.split(delimiter));
+                processImportRows(rowsData);
+            };
+            reader.readAsText(file, "UTF-8");
+        }
+        input.value = ""; 
+    };
+
+    async function processImportRows(rowsData) {
+        if (rowsData.length < 2) {
+            showToast("Datei enthält keine Daten.");
+            return;
+        }
+
+        const colRef = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+        const catRef = db.collection('users').doc(currentUser.uid).collection('categories');
+        
+        showToast(`Import läuft...`);
+        let addedCount = 0;
+        let skippedCount = 0;
+        
+        for (let i = 1; i < rowsData.length; i++) {
+            const cols = rowsData[i];
+            if (cols.length < 3) continue;
+            
+            let rawDate = String(cols[0] || "").trim();
+            rawDate = rawDate.split(' ')[0]; // Entferne evtl. Uhrzeiten, falls Excel diese anfügt
+            let datum = "";
+            
+            // Erweiterte Datums-Erkennung (unterstützt DD.MM.YYYY, YYYY-MM-DD und US Excel Format MM/DD/YYYY)
+            if (rawDate.includes('.')) {
+                const dParts = rawDate.split('.');
+                if(dParts.length === 3) {
+                    datum = `${dParts[2]}-${dParts[1].padStart(2, '0')}-${dParts[0].padStart(2, '0')}`;
+                }
+            } else if (rawDate.includes('-')) {
+                datum = rawDate;
+            } else if (rawDate.includes('/')) {
+                const dParts = rawDate.split('/');
+                if(dParts.length === 3 && dParts[2].length === 4) {
+                    datum = `${dParts[2]}-${dParts[0].padStart(2, '0')}-${dParts[1].padStart(2, '0')}`;
+                }
+            }
+
+            const beschreibung = String(cols[1] || "").trim() || "Ohne Beschreibung";
+            // Betrag-Erkennung: Bereinigt Währungssymbole (wie '€' oder '$') und konvertiert Komma zu Punkt
+            const betragRaw = String(cols[2] || "0").replace(',', '.').replace(/[^0-9.-]/g, '');
+            const betrag = parseFloat(betragRaw);
+            const catName = String(cols[3] || "").trim() || "Importiert";
+            const beleg = String(cols[4] || "").trim() || "";
+
+            if (isNaN(betrag) || !datum) continue;
+
+            const isDuplicate = expenses.some(e => 
+                e.datum === datum && 
+                e.beschreibung === beschreibung && 
+                parseFloat(e.betrag) === betrag
+            );
+
+            if (isDuplicate) {
+                skippedCount++;
+                continue;
+            }
+
+            let katId = "";
+            const existingCat = categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+            if (existingCat) {
+                katId = existingCat.id;
+            } else {
+                const newCat = await catRef.add({ name: catName });
+                katId = newCat.id;
+                await new Promise(r => setTimeout(r, 100)); // Kurze Pause für Sync
+                categories.push({id: katId, name: catName});
+            }
+
+            await colRef.add({
+                datum, beschreibung, betrag, kategorieId: katId, beleg, ts: Date.now()
+            });
+            addedCount++;
+        }
+        showToast(`${addedCount} importiert, ${skippedCount} Duplikate übersprungen`);
+    }
+
+    window.handleEntryClick = (id, event) => {
+            if (event.target.closest('.receipt-badge')) return;
+            editExpense(id);
+        };
+
+        window.triggerReceipt = (id, event) => {
+            if(event) event.stopPropagation();
+            const e = expenses.find(x => x.id === id);
+            if (!e) return;
+            if (e.foto) viewPhoto(e.foto);
+            else if ((e.beleg||'').startsWith('http')) window.open(e.beleg, '_blank');
+            else editExpense(id);
+        };
+
+        function handlePhotoUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    currentPhotoBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                    showPhotoPreview(currentPhotoBase64);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function showPhotoPreview(src) {
+            const img = document.getElementById('photoPreview');
+            img.src = src;
+            document.getElementById('photoPreviewContainer').classList.remove('hidden');
+        }
+
+        function removePhoto() {
+            currentPhotoBase64 = null;
+            document.getElementById('photoPreviewContainer').classList.add('hidden');
+            document.getElementById('belegFoto').value = '';
+        }
+
+        window.viewPhoto = (src) => {
+            const modal = document.getElementById('viewPhotoModal');
+            document.getElementById('fullPhoto').src = src;
+            modal.classList.remove('hidden');
+        };
+
         window.closeModal = id => document.getElementById(id).classList.add('hidden');
         
         document.getElementById('addExpenseBtn').onclick = () => {
             document.getElementById('expenseForm').reset();
             document.getElementById('editId').value = '';
+            removePhoto();
             document.getElementById('datum').value = new Date().toISOString().split('T')[0];
-            updateBelegLinkPreview('');
-            selectedCategory = categories[0]?.id;
+            selectedCategory = categories[0]?.id || '';
             document.getElementById('deleteBtn').classList.add('hidden');
             document.getElementById('modalTitle').innerText = 'Neuer Eintrag';
             document.getElementById('addModal').classList.remove('hidden');
@@ -318,152 +591,118 @@
         };
 
         window.editExpense = id => {
-            const e = expenses.find(x => x.id === id); if (!e) return;
+            const e = expenses.find(x => x.id === id);
+            if (!e) return;
             document.getElementById('editId').value = e.id;
             document.getElementById('betrag').value = e.betrag;
             document.getElementById('beschreibung').value = e.beschreibung;
-            document.getElementById('datum').value = e.datum;
             document.getElementById('beleg').value = e.beleg || '';
-            updateBelegLinkPreview(e.beleg || '');
+            document.getElementById('datum').value = e.datum;
             selectedCategory = e.kategorieId;
+            if(e.foto) { currentPhotoBase64 = e.foto; showPhotoPreview(e.foto); } 
+            else { removePhoto(); }
             document.getElementById('deleteBtn').classList.remove('hidden');
-            document.getElementById('modalTitle').innerText = 'Eintrag bearbeiten';
+            document.getElementById('modalTitle').innerText = 'Bearbeiten';
             document.getElementById('addModal').classList.remove('hidden');
             renderCategoryGrid();
         };
 
-        window.updateBelegLinkPreview = val => {
-            const preview = document.getElementById('belegPreview');
-            const link = document.getElementById('belegLink');
-            if(val && (val.startsWith('http://') || val.startsWith('https://'))) {
-                preview.classList.remove('hidden');
-                link.href = val;
-            } else {
-                preview.classList.add('hidden');
-            }
-        };
-
-        document.getElementById('expenseForm').onsubmit = ev => {
+        async function handleFormSubmit(ev) {
             ev.preventDefault();
             const id = document.getElementById('editId').value;
             const data = {
                 betrag: parseFloat(document.getElementById('betrag').value),
                 beschreibung: document.getElementById('beschreibung').value.trim(),
-                datum: document.getElementById('datum').value,
                 beleg: document.getElementById('beleg').value.trim(),
+                foto: currentPhotoBase64,
+                datum: document.getElementById('datum').value,
                 kategorieId: selectedCategory,
                 ts: Date.now()
             };
-            const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
-            if(id) col.doc(id).update(data).then(() => closeModal('addModal'));
-            else col.add(data).then(() => closeModal('addModal'));
-        };
-
-        document.getElementById('deleteBtn').onclick = () => {
-            if(confirm("Löschen?")) {
-                db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete().then(() => closeModal('addModal'));
-            }
-        };
-
-        function renderCategoryGrid() {
-            document.getElementById('categoryGrid').innerHTML = categories.map(c => `
-                <button type="button" onclick="selectedCategory='${c.id}';renderCategoryGrid()" class="category-pill px-4 py-3 rounded-xl border-2 text-[10px] font-bold uppercase ${selectedCategory===c.id?'selected':'bg-slate-50 text-slate-500'}">${c.name}</button>
-            `).join('');
+            try {
+                const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+                if(id) await col.doc(id).update(data);
+                else await col.add(data);
+                closeModal('addModal');
+                showToast("Gespeichert");
+            } catch(e) { console.error(e); showToast("Fehler beim Speichern"); }
         }
 
-        function renderManagementUI() {
-            document.getElementById('manageCategoryList').innerHTML = categories.map(c => `
-                <div class="flex items-center gap-2 bg-slate-50 p-2 pl-4 rounded-xl border text-sm font-bold">
-                    <input type="text" value="${c.name}" onblur="updateCatName('${c.id}', this.value)" class="flex-1 bg-transparent outline-none">
-                    <button onclick="requestDeleteCategory('${c.id}')" class="w-8 h-8 text-rose-400"><i class="fas fa-times"></i></button>
-                </div>`).join('');
-        }
-
-        window.addNewCategory = () => {
-            const n = document.getElementById('newCatInput').value.trim(); if (n) db.collection('users').doc(currentUser.uid).collection('categories').add({name:n});
-            document.getElementById('newCatInput').value = "";
-        };
-
-        window.updateCatName = (id, val) => { if(val.trim()) db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({name:val.trim()}); };
-        window.requestDeleteCategory = id => { if(categories.length > 1 && confirm("Löschen?")) db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete(); };
-
-        // --- VERBESSERTER IMPORT (DEUTSCH & KATEGORIEN) ---
-        async function handleImport(input) {
-            const file = input.files[0]; if (!file) return;
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const lines = e.target.result.split('\n').filter(l => l.trim());
-                const batch = db.batch();
-                const colAusgaben = db.collection('users').doc(currentUser.uid).collection('ausgaben');
-                const colCats = db.collection('users').doc(currentUser.uid).collection('categories');
-                
-                // Wir cachen Kategorien für schnellen Zugriff
-                let catMap = {};
-                categories.forEach(c => catMap[c.name.toLowerCase()] = c.id);
-
-                for (let i = 1; i < lines.length; i++) {
-                    const v = lines[i].split(/[;]/); // Nutzt Semikolon
-                    if (v.length < 3) continue;
-
-                    // Datum konvertieren (TT.MM.JJJJ -> JJJJ-MM-TT)
-                    let dStr = v[0].trim();
-                    if(dStr.includes('.')) {
-                        const parts = dStr.split('.');
-                        if(parts.length === 3) dStr = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-                    }
-
-                    const beschr = v[1] ? v[1].trim() : '';
-                    const betrag = parseFloat(v[2].replace(',', '.')) || 0;
-                    const beleg = v[3] ? v[3].trim() : '';
-                    const catName = v[4] ? v[4].trim() : 'Diverse';
-
-                    // Kategorie-Logik
-                    let cId = catMap[catName.toLowerCase()];
-                    if (!cId) {
-                        const newCat = await colCats.add({name: catName});
-                        cId = newCat.id;
-                        catMap[catName.toLowerCase()] = cId;
-                    }
-
-                    batch.set(colAusgaben.doc(), { 
-                        datum: dStr, 
-                        beschreibung: beschr, 
-                        betrag: betrag, 
-                        beleg: beleg, 
-                        kategorieId: cId, 
-                        ts: Date.now() + i 
-                    });
+        window.deleteCategory = async (id, name) => {
+            openConfirm(
+                'Kategorie löschen?', 
+                `Möchtest du "${name.substring(0, 30)}..." wirklich entfernen?`, 
+                async () => {
+                    try {
+                        const catRef = db.collection('users').doc(currentUser.uid).collection('categories');
+                        if (id && id !== 'undefined') await catRef.doc(id).delete();
+                        const allCats = await catRef.get();
+                        allCats.forEach(doc => {
+                            if (doc.data().name === name) doc.ref.delete();
+                        });
+                        showToast("Kategorie entfernt");
+                    } catch(e) { console.error(e); showToast("Fehler beim Löschen"); }
                 }
-                await batch.commit(); 
+            );
+        };
+
+        async function deleteAllData() {
+            try {
+                const batch = db.batch();
+                const snap = await db.collection('users').doc(currentUser.uid).collection('ausgaben').get();
+                snap.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
                 closeModal('dataModal');
-                alert("Import abgeschlossen!");
-            };
-            reader.readAsText(file);
+                showToast("Alle Daten gelöscht");
+            } catch(e) { console.error(e); }
         }
 
-        // --- VERBESSERTER EXPORT (DEUTSCH & KATEGORIEN) ---
-        async function handleManualExport() {
-            // Header inkl. BOM für Excel-Umlaute
-            let csv = "\uFEFFDatum;Beschreibung;Betrag;Beleg;Kategorie\n";
-            
-            expenses.forEach(e => {
-                const cat = categories.find(c => c.id === e.kategorieId);
-                const date = new Date(e.datum);
-                const dStr = isNaN(date) ? e.datum : date.toLocaleDateString('de-DE');
-                const bStr = e.betrag.toString().replace('.', ',');
-                
-                csv += `${dStr};${e.beschreibung};${bStr};${e.beleg||''};${cat ? cat.name : ''}\n`;
-            });
-
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `Budget_Export_${new Date().toLocaleDateString('de-DE')}.csv`;
-            link.click();
+        function showToast(msg) { const t=document.getElementById("toast"); t.innerText=msg; t.className="show"; setTimeout(()=>t.className="", 3000); }
+        function hideSplash() { const s=document.getElementById('splashScreen'); if(s){s.style.opacity='0'; setTimeout(()=>s.style.display='none',500);}}
+        function openConfirm(t,tx,cb) { document.getElementById('confirmTitle').innerText=t; document.getElementById('confirmText').innerText=tx; document.getElementById('confirmModal').classList.remove('hidden'); currentConfirmCallback=cb;}
+        document.getElementById('confirmActionBtn').onclick = () => { if(currentConfirmCallback) currentConfirmCallback(); closeModal('confirmModal'); };
+        async function handleLogin() { try { await firebase.auth().signInWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); } catch(e){ showToast("Login fehlgeschlagen"); }}
+        async function handleRegister() { 
+            try { 
+                const cred = await firebase.auth().createUserWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); 
+                await db.collection('users').doc(cred.user.uid).collection('categories').add({name:'Allgemein'}); 
+            } catch(e){ showToast("Registrierung fehlgeschlagen"); }
         }
-
-        function hideSplash() { document.getElementById('splashScreen').style.opacity = '0'; setTimeout(() => document.getElementById('splashScreen').style.display = 'none', 500); }
-        function showAuthError(m) { const e = document.getElementById('authError'); e.innerText = m; e.classList.remove('hidden'); }
+        function handleLogout() { firebase.auth().signOut().then(() => location.reload()); }
+        async function deleteCurrentEntry() { try { await db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete(); closeModal('addModal'); showToast("Gelöscht"); } catch(e){ showToast("Fehler beim Löschen"); }}
+        async function addNewCategory() { const val=document.getElementById('newCatInput').value.trim(); if(!val) return; await db.collection('users').doc(currentUser.uid).collection('categories').add({name:val}); document.getElementById('newCatInput').value=''; }
+        
+        function renderFilters() { 
+            let h='<button onclick="setFilter(\'all\')" class="px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase '+(activeFilter==='all'?'bg-indigo-600 text-white':'bg-white text-slate-400 border')+'">Alle</button>'; 
+            categories.forEach(c=>{ 
+                h+=`<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-[10px] font-bold uppercase whitespace-nowrap ${activeFilter===c.id?'bg-indigo-600 text-white':'bg-white text-slate-400 border'}">${c.name.substring(0,15)}${c.name.length>15?'...':''}</button>`; 
+            }); 
+            document.getElementById('filterBar').innerHTML=h; 
+        }
+        
+        function renderCategoryGrid() { 
+            document.getElementById('categoryGrid').innerHTML = categories.map(c => `
+                <button type="button" onclick="selectedCategory='${c.id}';renderCategoryGrid()" class="category-pill px-4 py-3 rounded-xl border-2 text-[10px] font-bold uppercase ${selectedCategory===c.id?'selected':'bg-slate-50 text-slate-500'}">
+                    ${c.name.substring(0,15)}
+                </button>
+            `).join(''); 
+        }
+        
+        function renderSettingsCategories() { 
+            document.getElementById('settingsCategoryList').innerHTML = categories.map(c => `
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
+                    <div class="flex flex-col min-w-0 flex-1 pr-4">
+                        <span class="text-xs font-bold text-slate-900 truncate">${c.name}</span>
+                        <span class="text-[8px] text-slate-300 font-mono">${c.id}</span>
+                    </div>
+                    <button onclick="deleteCategory('${c.id}', '${c.name.replace(/'/g, "\\'")}')" class="w-10 h-10 flex items-center justify-center text-rose-500 active:bg-rose-50 rounded-xl bg-white shadow-sm border border-slate-100 shrink-0">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                </div>
+            `).join(''); 
+        }
+        
+        window.setFilter = id => { activeFilter = id; renderFilters(); renderUI(); };
     </script>
 </body>
 </html>
