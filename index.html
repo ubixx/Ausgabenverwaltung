@@ -3,12 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Budget Cloud Pro</title>
-    
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#6366f1">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/1077/1077976.png">
+    <title>Budget Cloud Pro + PDF</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -17,6 +12,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 
     <style>
         :root { --app-primary: #6366f1; --app-bg: #f8fafc; }
@@ -31,8 +27,6 @@
         #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
         @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 40px; opacity: 1;} }
         @keyframes fadeout { from {bottom: 40px; opacity: 1;} to {bottom: 0; opacity: 0;} }
-        .stat-bar-bg { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
-        .stat-bar-fill { height: 100%; background: var(--app-primary); transition: width 0.5s ease-in-out; }
     </style>
 </head>
 <body class="min-h-screen font-sans text-slate-800">
@@ -43,21 +37,18 @@
         <div class="w-20 h-20 bg-indigo-600 text-white rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-2xl">
             <i class="fas fa-wallet"></i>
         </div>
-        <p class="text-slate-400 font-bold text-xs uppercase tracking-widest">Lade Daten...</p>
+        <p class="text-slate-400 font-bold text-xs uppercase tracking-widest">Lade Budget...</p>
     </div>
 
     <div id="authScreen" class="hidden min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 z-50">
         <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl text-center">
-            <div class="w-16 h-16 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6 shadow-lg">
-                <i class="fas fa-lock"></i>
-            </div>
-            <h2 class="text-2xl font-black text-slate-900 mb-6">Willkommen</h2>
+            <h2 class="text-2xl font-black text-slate-900 mb-6">Login</h2>
             <form id="authForm" class="space-y-4" onsubmit="event.preventDefault()">
                 <input type="email" id="authEmail" placeholder="E-Mail" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-center">
                 <input type="password" id="authPassword" placeholder="Passwort" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-center">
                 <div class="flex gap-3 pt-2">
                     <button type="button" onclick="handleLogin()" class="flex-1 bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Login</button>
-                    <button type="button" onclick="handleRegister()" class="flex-1 bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Neu hier?</button>
+                    <button type="button" onclick="handleRegister()" class="flex-1 bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Neu</button>
                 </div>
             </form>
         </div>
@@ -77,17 +68,9 @@
                     <i class="fas fa-cog"></i>
                 </button>
             </div>
-            <div class="mt-4 bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                <div class="flex justify-between items-center mb-2 text-xs font-bold uppercase tracking-widest">
-                    <span id="monthLabel" class="text-slate-400">Monat</span>
-                    <span id="monthCountBadge" class="text-indigo-600">0 Buchungen</span>
-                </div>
-                <div class="text-lg font-black text-slate-900 mb-2" id="monthSpending">0,00 €</div>
-                <div class="stat-bar-bg"><div class="stat-bar-fill w-0" id="monthBarFill"></div></div>
-            </div>
         </header>
 
-        <div class="px-6 py-4 bg-white/95 backdrop-blur-md sticky top-[165px] z-20 border-b border-slate-100">
+        <div class="px-6 py-4 bg-white/95 backdrop-blur-md sticky top-[80px] z-20 border-b border-slate-100">
             <div class="relative">
                 <input type="text" id="searchInput" placeholder="Suchen..." onkeyup="renderUI()" class="w-full p-4 pl-12 bg-slate-100 border-none rounded-2xl text-sm font-bold outline-none">
                 <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400"></i>
@@ -106,53 +89,63 @@
 
     <div id="dataModal" class="hidden fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-4 overflow-y-auto max-h-[90vh]">
-            <div class="flex justify-between items-center mb-2">
+            <div class="flex justify-between items-center">
                 <h3 class="text-xl font-black">Einstellungen</h3>
                 <button onclick="closeModal('dataModal')"><i class="fas fa-times text-slate-400 text-xl"></i></button>
             </div>
             
             <div class="grid grid-cols-2 gap-3">
                 <button onclick="exportToCSV()" class="bg-slate-50 p-4 rounded-xl text-xs font-bold flex flex-col items-center gap-2">
-                    <i class="fas fa-file-export text-indigo-600"></i> Sheets Export
+                    <i class="fas fa-file-export text-indigo-600"></i> Export
                 </button>
                 <label class="bg-slate-50 p-4 rounded-xl text-xs font-bold flex flex-col items-center gap-2 cursor-pointer">
-                    <i class="fas fa-file-import text-indigo-600"></i> Sheets Import
+                    <i class="fas fa-file-import text-indigo-600"></i> Import
                     <input type="file" class="hidden" accept=".xlsx, .xls, .csv" onchange="importData(this)">
                 </label>
             </div>
 
             <div class="border-t border-slate-100 pt-4 mt-2">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Kategorien verwalten</label>
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Kategorien</label>
                 <div class="flex gap-2 mb-3">
-                    <input type="text" id="newCatName" placeholder="Name..." class="flex-1 p-3 bg-slate-50 rounded-xl text-sm font-bold outline-none border border-transparent focus:border-indigo-500">
+                    <input type="text" id="newCatName" placeholder="Name..." class="flex-1 p-3 bg-slate-50 rounded-xl text-sm font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                     <button onclick="addCategory()" class="bg-indigo-600 text-white px-4 rounded-xl shadow-lg"><i class="fas fa-plus"></i></button>
                 </div>
                 <div id="manageCatsList" class="space-y-2 max-h-40 overflow-y-auto no-scrollbar"></div>
             </div>
 
-            <button onclick="exportBackupJSON()" class="w-full bg-indigo-50 text-indigo-700 p-4 rounded-xl font-bold flex items-center justify-center gap-2 border border-indigo-100">
-                <i class="fas fa-database"></i> JSON Full Backup
-            </button>
             <button onclick="handleLogout()" class="w-full bg-slate-900 text-white p-4 rounded-xl font-bold mt-2">Abmelden</button>
         </div>
     </div>
 
     <div id="addModal" class="hidden fixed inset-0 bg-slate-900/60 z-[600] flex items-end sm:items-center justify-center">
-        <div class="bg-white w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div class="bg-white w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl max-h-[95vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-black" id="modalTitle">Neuer Eintrag</h3>
+                <h3 class="text-xl font-black" id="modalTitle">Eintrag</h3>
                 <button onclick="closeModal('addModal')"><i class="fas fa-times text-slate-400"></i></button>
             </div>
             <form id="expenseForm" class="space-y-4" onsubmit="handleFormSubmit(event)">
                 <input type="hidden" id="editId">
+                <input type="hidden" id="fotoUrl">
+                
                 <div class="grid grid-cols-2 gap-4">
-                    <input type="number" id="betrag" placeholder="0,00" step="0.01" required class="p-4 bg-slate-50 rounded-2xl text-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                    <input type="number" id="betrag" placeholder="0,00" step="0.01" required class="p-4 bg-slate-50 rounded-2xl text-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-center">
                     <input type="date" id="datum" required class="p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                 </div>
-                <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
-                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mt-4">Kategorie</label>
-                <div id="categoryGrid" class="flex flex-wrap gap-2 mb-4"></div>
-                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-lg mt-2">Speichern</button>
+                <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-center">
+                
+                <div id="categoryGrid" class="flex flex-wrap gap-2 py-2"></div>
+
+                <div class="border-2 border-dashed border-slate-200 rounded-2xl p-4">
+                    <label class="cursor-pointer block text-center">
+                        <input type="file" id="fotoInput" class="hidden" accept="image/*, application/pdf" onchange="uploadFile(this)">
+                        <div id="fotoPreview" class="flex flex-col items-center gap-2">
+                            <i class="fas fa-paperclip text-2xl text-slate-300"></i>
+                            <span class="text-xs font-bold text-slate-400">Foto oder PDF Beleg</span>
+                        </div>
+                    </label>
+                </div>
+                
+                <button type="submit" id="saveBtn" class="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-lg mt-2">Speichern</button>
                 <button type="button" id="deleteBtn" onclick="deleteCurrentEntry()" class="hidden w-full text-rose-500 font-bold py-4">Löschen</button>
             </form>
         </div>
@@ -168,17 +161,16 @@
             appId: "1:594713378906:web:7929f7a875159336101863"
         };
 
-        let db, currentUser, expenses = [], categories = [], activeFilter = 'all', selectedCategory = '';
+        let db, storage, currentUser, expenses = [], categories = [], activeFilter = 'all', selectedCategory = '';
 
         window.onload = function() {
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             db = firebase.firestore();
-            db.enablePersistence({synchronizeTabs: true}).catch(() => console.log("Persistence offline"));
+            storage = firebase.storage();
 
             firebase.auth().onAuthStateChanged(user => {
                 if (user) {
                     currentUser = user;
-                    updateOnlineStatus();
                     document.getElementById('authScreen').classList.add('hidden');
                     document.getElementById('mainApp').classList.remove('hidden');
                     startSync();
@@ -189,13 +181,38 @@
                     hideSplash();
                 }
             });
-            window.addEventListener('online', updateOnlineStatus);
-            window.addEventListener('offline', updateOnlineStatus);
         };
 
-        function updateOnlineStatus() {
-            const ind = document.getElementById('cloudStatus');
-            if(ind) ind.className = `w-2 h-2 rounded-full ${navigator.onLine ? 'bg-emerald-500' : 'bg-amber-500'}`;
+        // --- UPLOAD LOGIK (Erkennt PDF & BILDER) ---
+        async function uploadFile(input) {
+            const file = input.files[0];
+            if (!file || !currentUser) return;
+
+            const preview = document.getElementById('fotoPreview');
+            const saveBtn = document.getElementById('saveBtn');
+            
+            preview.innerHTML = `<i class="fas fa-spinner fa-spin text-indigo-600"></i> <span class="text-xs">Lade hoch...</span>`;
+            saveBtn.disabled = true;
+
+            const storageRef = storage.ref(`users/${currentUser.uid}/belege/${Date.now()}_${file.name}`);
+            
+            try {
+                const snapshot = await storageRef.put(file);
+                const url = await snapshot.ref.getDownloadURL();
+                
+                document.getElementById('fotoUrl').value = url;
+                
+                // Vorschau basierend auf Dateityp
+                if(file.type === "application/pdf") {
+                    preview.innerHTML = `<i class="fas fa-file-pdf text-4xl text-rose-500"></i> <span class="text-xs text-emerald-500 font-bold">PDF bereit!</span>`;
+                } else {
+                    preview.innerHTML = `<img src="${url}" class="h-20 w-20 object-cover rounded-xl mx-auto shadow-md"> <span class="text-xs text-emerald-500 font-bold">Bild bereit!</span>`;
+                }
+                showToast("Beleg hochgeladen");
+            } catch (e) {
+                showToast("Upload fehlgeschlagen");
+                preview.innerHTML = `<i class="fas fa-exclamation-triangle text-rose-500"></i>`;
+            } finally { saveBtn.disabled = false; }
         }
 
         async function handleLogin() {
@@ -210,7 +227,7 @@
             try {
                 const cred = await firebase.auth().createUserWithEmailAndPassword(email, pass);
                 await db.collection('users').doc(cred.user.uid).collection('categories').add({name: 'Allgemein'});
-            } catch(e) { showToast("Registrierungs-Fehler"); }
+            } catch(e) { showToast("Fehler"); }
         }
 
         function handleLogout() { firebase.auth().signOut().then(() => location.reload()); }
@@ -224,7 +241,7 @@
             userRef.collection('ausgaben').onSnapshot(snap => {
                 expenses = snap.docs.map(d => ({id: d.id, ...d.data()}));
                 expenses.sort((a,b) => new Date(b.datum) - new Date(a.datum));
-                renderUI(); renderStats(); hideSplash();
+                renderUI(); hideSplash();
             });
         }
 
@@ -237,8 +254,15 @@
             list.innerHTML = filtered.map(e => {
                 const cat = categories.find(c => c.id === e.kategorieId);
                 total += parseFloat(e.betrag);
+                
+                // Icon Logik für die Liste (Büroklammer bei Beleg)
+                const hasBeleg = e.fotoUrl ? `<i class="fas fa-paperclip text-indigo-400 mr-2 text-xs"></i>` : '';
+                
                 return `<div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center" onclick="editExpense('${e.id}')">
-                    <div><p class="font-black text-slate-900">${e.beschreibung}</p><p class="text-[10px] font-bold text-slate-400 uppercase mt-1">${new Date(e.datum).toLocaleDateString('de-DE')} • ${cat?.name || 'Diverse'}</p></div>
+                    <div>
+                        <p class="font-black text-slate-900">${hasBeleg}${e.beschreibung}</p>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase mt-1">${new Date(e.datum).toLocaleDateString('de-DE')} • ${cat?.name || 'Diverse'}</p>
+                    </div>
                     <p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p>
                 </div>`;
             }).join('');
@@ -246,54 +270,16 @@
             document.getElementById('totalCountBadge').innerText = `${expenses.length} Einträge`;
         }
 
-        function renderStats() {
-            const now = new Date();
-            const mEx = expenses.filter(e => new Date(e.datum).getMonth() === now.getMonth() && new Date(e.datum).getFullYear() === now.getFullYear());
-            const mTotal = mEx.reduce((acc, e) => acc + parseFloat(e.betrag), 0);
-            document.getElementById('monthSpending').innerText = mTotal.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
-            document.getElementById('monthCountBadge').innerText = `${mEx.length} Buchungen`;
-            document.getElementById('monthBarFill').style.width = Math.min((mTotal / 2000) * 100, 100) + "%";
-            document.getElementById('monthLabel').innerText = now.toLocaleString('de-DE', {month:'long'});
-        }
-
-        function renderFilters() {
-            document.getElementById('filterBar').innerHTML = `<button onclick="setFilter('all')" class="px-5 py-2.5 rounded-xl text-xs font-bold ${activeFilter==='all'?'bg-slate-900 text-white':'bg-slate-100 text-slate-500'}">Alle</button>` + 
-                categories.map(c => `<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap ${activeFilter===c.id?'bg-slate-900 text-white':'bg-slate-100 text-slate-500'}">${c.name}</button>`).join('');
-        }
-
-        function renderCategoryGrid() {
-            document.getElementById('categoryGrid').innerHTML = categories.map(c => `<button type="button" onclick="selectedCategory='${c.id}';renderCategoryGrid()" class="px-4 py-3 rounded-xl border-2 text-[10px] font-bold uppercase ${selectedCategory===c.id?'border-indigo-600 bg-indigo-50 text-indigo-600':'border-transparent bg-slate-100 text-slate-500'}">${c.name}</button>`).join('');
-        }
-
-        function renderManageCatsList() {
-            const list = document.getElementById('manageCatsList');
-            if(!list) return;
-            list.innerHTML = categories.map(c => `
-                <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span class="text-sm font-bold text-slate-700">${c.name}</span>
-                    <button onclick="deleteCategory('${c.id}')" class="text-rose-500 p-1"><i class="fas fa-trash-alt"></i></button>
-                </div>
-            `).join('');
-        }
-
-        async function addCategory() {
-            const name = document.getElementById('newCatName').value.trim();
-            if(!name) return;
-            await db.collection('users').doc(currentUser.uid).collection('categories').add({ name: name });
-            document.getElementById('newCatName').value = '';
-            showToast("Kategorie erstellt");
-        }
-
-        async function deleteCategory(id) {
-            if(!confirm("Kategorie wirklich löschen?")) return;
-            await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete();
-            showToast("Kategorie entfernt");
-        }
-
         async function handleFormSubmit(e) {
             e.preventDefault();
             const id = document.getElementById('editId').value;
-            const data = { betrag: parseFloat(document.getElementById('betrag').value), datum: document.getElementById('datum').value, beschreibung: document.getElementById('beschreibung').value, kategorieId: selectedCategory || categories[0]?.id };
+            const data = { 
+                betrag: parseFloat(document.getElementById('betrag').value), 
+                datum: document.getElementById('datum').value, 
+                beschreibung: document.getElementById('beschreibung').value, 
+                kategorieId: selectedCategory || categories[0]?.id,
+                fotoUrl: document.getElementById('fotoUrl').value 
+            };
             const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
             id ? await col.doc(id).update(data) : await col.add(data);
             closeModal('addModal');
@@ -306,76 +292,67 @@
             document.getElementById('betrag').value = e.betrag;
             document.getElementById('beschreibung').value = e.beschreibung;
             document.getElementById('datum').value = e.datum;
+            document.getElementById('fotoUrl').value = e.fotoUrl || '';
             selectedCategory = e.kategorieId;
+            
+            const preview = document.getElementById('fotoPreview');
+            if(e.fotoUrl) {
+                const isPdf = e.fotoUrl.toLowerCase().includes('.pdf');
+                preview.innerHTML = `
+                    <div class="cursor-pointer" onclick="event.stopPropagation(); window.open('${e.fotoUrl}', '_blank')">
+                        ${isPdf ? '<i class="fas fa-file-pdf text-4xl text-rose-500 mb-1"></i>' : `<img src="${e.fotoUrl}" class="h-24 w-full object-contain rounded-xl shadow-inner mb-1">`}
+                        <p class="text-[10px] font-bold text-indigo-600 uppercase">Beleg öffnen</p>
+                    </div>`;
+            } else {
+                preview.innerHTML = `<i class="fas fa-camera text-2xl text-slate-300"></i> <span class="text-xs font-bold text-slate-400">Kein Beleg</span>`;
+            }
+
             document.getElementById('deleteBtn').classList.remove('hidden');
             document.getElementById('addModal').classList.remove('hidden');
             renderCategoryGrid();
         };
 
         document.getElementById('addExpenseBtn').onclick = () => {
-            document.getElementById('modalTitle').innerText = "Neuer Eintrag";
             document.getElementById('expenseForm').reset();
             document.getElementById('editId').value = '';
+            document.getElementById('fotoUrl').value = '';
+            document.getElementById('fotoPreview').innerHTML = `<i class="fas fa-paperclip text-2xl text-slate-300"></i> <span class="text-xs font-bold text-slate-400">Beleg wählen</span>`;
             document.getElementById('datum').value = new Date().toISOString().split('T')[0];
             document.getElementById('deleteBtn').classList.add('hidden');
-            selectedCategory = categories[0]?.id || '';
             document.getElementById('addModal').classList.remove('hidden');
             renderCategoryGrid();
         };
 
-        async function deleteCurrentEntry() {
-            if(confirm("Löschen?")) {
-                await db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete();
-                closeModal('addModal');
-            }
+        // --- HILFSFUNKTIONEN ---
+        async function addCategory() {
+            const n = document.getElementById('newCatName').value.trim();
+            if(n) await db.collection('users').doc(currentUser.uid).collection('categories').add({ name: n });
+            document.getElementById('newCatName').value = '';
         }
-
+        async function deleteCategory(id) {
+            if(confirm("Löschen?")) await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete();
+        }
+        function renderManageCatsList() {
+            document.getElementById('manageCatsList').innerHTML = categories.map(c => `<div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl"><span>${c.name}</span><button onclick="deleteCategory('${c.id}')" class="text-rose-500"><i class="fas fa-trash-alt"></i></button></div>`).join('');
+        }
+        function renderFilters() {
+            document.getElementById('filterBar').innerHTML = `<button onclick="setFilter('all')" class="px-5 py-2.5 rounded-xl text-xs font-bold ${activeFilter==='all'?'bg-slate-900 text-white':'bg-slate-100'}">Alle</button>` + categories.map(c => `<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap ${activeFilter===c.id?'bg-slate-900 text-white':'bg-slate-100'}">${c.name}</button>`).join('');
+        }
+        function renderCategoryGrid() {
+            document.getElementById('categoryGrid').innerHTML = categories.map(c => `<button type="button" onclick="selectedCategory='${c.id}';renderCategoryGrid()" class="px-4 py-3 rounded-xl border-2 text-[10px] font-bold uppercase ${selectedCategory===c.id?'border-indigo-600 bg-indigo-50 text-indigo-600':'border-transparent bg-slate-100'}">${c.name}</button>`).join('');
+        }
         function exportToCSV() {
-            const exportData = expenses.map(e => {
-                const cat = categories.find(c => c.id === e.kategorieId)?.name || 'Diverse';
-                const d = e.datum.split('-');
-                return { "Datum": `${d[2]}.${d[1]}.${d[0]}`, "Beschreibung": e.beschreibung, "Kategorie": cat, "Betrag": parseFloat(e.betrag).toFixed(2).replace('.', ',') };
-            });
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Budget");
-            XLSX.writeFile(wb, `Budget_Export_${new Date().toLocaleDateString('de-DE')}.xlsx`);
+            const d = expenses.map(e => ({ Datum: e.datum, Beschreibung: e.beschreibung, Betrag: e.betrag.toString().replace('.',','), Beleg: e.fotoUrl || '' }));
+            const ws = XLSX.utils.json_to_sheet(d); const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Budget"); XLSX.writeFile(wb, "Budget.xlsx");
         }
-
-        function importData(input) {
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, {type: 'array', cellDates: true});
-                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
-                for(let row of json) {
-                    let val = row.Betrag || row.betrag || row.VALUE;
-                    if(val) {
-                        let cleanBetrag = typeof val === 'string' ? parseFloat(val.replace(',', '.')) : parseFloat(val);
-                        let cleanDate = row.Datum ? new Date(row.Datum).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-                        await col.add({ datum: cleanDate, beschreibung: row.Beschreibung || 'Import', betrag: cleanBetrag, kategorieId: categories[0]?.id || '' });
-                    }
-                }
-                showToast("Import fertig!"); closeModal('dataModal');
-            };
-            reader.readAsArrayBuffer(input.files[0]);
-        }
-
-        async function exportBackupJSON() {
-            const userRef = db.collection('users').doc(currentUser.uid);
-            const catSnap = await userRef.collection('categories').get();
-            const expSnap = await userRef.collection('ausgaben').get();
-            const backup = { exportDatum: new Date().toISOString(), kategorien: catSnap.docs.map(d => d.data()), ausgaben: expSnap.docs.map(d => d.data()) };
-            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = "full_backup.json"; a.click();
-        }
-
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
         function hideSplash() { document.getElementById('splashScreen').style.opacity='0'; setTimeout(()=>document.getElementById('splashScreen').style.display='none',500); }
         function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
         function setFilter(id) { activeFilter = id; renderFilters(); renderUI(); }
+        async function deleteCurrentEntry() {
+            if(confirm("Löschen?")) { await db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete(); closeModal('addModal'); }
+        }
     </script>
 </body>
 </html>
