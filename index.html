@@ -12,7 +12,6 @@
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -21,15 +20,8 @@
 
     <style>
         :root { --app-primary: #6366f1; --app-bg: #f8fafc; }
-        body { 
-            background-color: var(--app-bg); 
-            -webkit-tap-highlight-color: transparent;
-            user-select: none;
-            padding-top: env(safe-area-inset-top);
-        }
+        body { background-color: var(--app-bg); -webkit-tap-highlight-color: transparent; padding-top: env(safe-area-inset-top); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        #splashScreen { transition: opacity 0.5s ease-out; }
-        
         #toast {
             visibility: hidden; min-width: 280px; background-color: #1e293b; color: #fff;
             text-align: center; border-radius: 16px; padding: 20px; position: fixed;
@@ -39,7 +31,6 @@
         #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
         @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 40px; opacity: 1;} }
         @keyframes fadeout { from {bottom: 40px; opacity: 1;} to {bottom: 0; opacity: 0;} }
-        
         .stat-bar-bg { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
         .stat-bar-fill { height: 100%; background: var(--app-primary); transition: width 0.5s ease-in-out; }
     </style>
@@ -52,7 +43,7 @@
         <div class="w-20 h-20 bg-indigo-600 text-white rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-2xl">
             <i class="fas fa-wallet"></i>
         </div>
-        <p class="text-slate-400 font-bold text-xs uppercase tracking-widest">Initialisiere...</p>
+        <p class="text-slate-400 font-bold text-xs uppercase tracking-widest">Lade Daten...</p>
     </div>
 
     <div id="authScreen" class="hidden min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 z-50">
@@ -60,7 +51,7 @@
             <div class="w-16 h-16 bg-indigo-600 text-white rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6 shadow-lg">
                 <i class="fas fa-lock"></i>
             </div>
-            <h2 class="text-2xl font-black text-slate-900 mb-2">Willkommen</h2>
+            <h2 class="text-2xl font-black text-slate-900 mb-6">Willkommen</h2>
             <form id="authForm" class="space-y-4" onsubmit="event.preventDefault()">
                 <input type="email" id="authEmail" placeholder="E-Mail" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-center">
                 <input type="password" id="authPassword" placeholder="Passwort" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-center">
@@ -82,14 +73,14 @@
                         <p class="text-slate-400 font-bold text-xs uppercase tracking-widest" id="totalCountBadge">0 Einträge</p>
                     </div>
                 </div>
-                <button onclick="document.getElementById('dataModal').classList.remove('hidden')" class="w-12 h-12 bg-slate-50 text-slate-900 rounded-2xl flex items-center justify-center text-xl active:scale-95">
+                <button onclick="document.getElementById('dataModal').classList.remove('hidden')" class="w-12 h-12 bg-slate-50 text-slate-900 rounded-2xl flex items-center justify-center text-xl">
                     <i class="fas fa-cog"></i>
                 </button>
             </div>
             <div class="mt-4 bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-xs font-bold text-slate-400 uppercase tracking-widest" id="monthLabel">Monat</span>
-                    <span class="text-xs font-bold text-indigo-600" id="monthCountBadge">0 Buchungen</span>
+                <div class="flex justify-between items-center mb-2 text-xs font-bold uppercase tracking-widest">
+                    <span id="monthLabel" class="text-slate-400">Monat</span>
+                    <span id="monthCountBadge" class="text-indigo-600">0 Buchungen</span>
                 </div>
                 <div class="text-lg font-black text-slate-900 mb-2" id="monthSpending">0,00 €</div>
                 <div class="stat-bar-bg"><div class="stat-bar-fill w-0" id="monthBarFill"></div></div>
@@ -98,13 +89,13 @@
 
         <div class="px-6 py-4 bg-white/95 backdrop-blur-md sticky top-[165px] z-20 border-b border-slate-100">
             <div class="relative">
-                <input type="text" id="searchInput" placeholder="Suchen..." onkeyup="renderUI()" class="w-full p-4 pl-12 bg-slate-100/50 border border-transparent rounded-2xl text-sm outline-none focus:bg-white focus:border-indigo-100">
+                <input type="text" id="searchInput" placeholder="Suchen..." onkeyup="renderUI()" class="w-full p-4 pl-12 bg-slate-100 border-none rounded-2xl text-sm font-bold outline-none">
                 <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400"></i>
             </div>
-            <div id="filterBar" class="mt-4 flex gap-2 overflow-x-auto no-scrollbar"></div>
+            <div id="filterBar" class="mt-4 flex gap-2 overflow-x-auto no-scrollbar pb-1"></div>
         </div>
 
-        <div id="expenseList" class="flex-1 p-6 space-y-4 pb-32"></div>
+        <div id="expenseList" class="flex-1 p-6 space-y-4 pb-32 overflow-y-auto"></div>
 
         <div class="fixed bottom-0 left-0 right-0 p-6 flex justify-center z-40 mb-[env(safe-area-inset-bottom)]">
             <button id="addExpenseBtn" class="w-full max-w-md bg-indigo-600 text-white font-bold py-5 rounded-2xl flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-transform">
@@ -114,24 +105,35 @@
     </div>
 
     <div id="dataModal" class="hidden fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-6">
-        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-4">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-4 overflow-y-auto max-h-[90vh]">
             <div class="flex justify-between items-center mb-2">
                 <h3 class="text-xl font-black">Einstellungen</h3>
                 <button onclick="closeModal('dataModal')"><i class="fas fa-times text-slate-400 text-xl"></i></button>
             </div>
+            
             <div class="grid grid-cols-2 gap-3">
                 <button onclick="exportToCSV()" class="bg-slate-50 p-4 rounded-xl text-xs font-bold flex flex-col items-center gap-2">
-                    <i class="fas fa-file-export text-indigo-600"></i> Sheets/Excel Export
+                    <i class="fas fa-file-export text-indigo-600"></i> Sheets Export
                 </button>
                 <label class="bg-slate-50 p-4 rounded-xl text-xs font-bold flex flex-col items-center gap-2 cursor-pointer">
                     <i class="fas fa-file-import text-indigo-600"></i> Sheets Import
                     <input type="file" class="hidden" accept=".xlsx, .xls, .csv" onchange="importData(this)">
                 </label>
             </div>
+
+            <div class="border-t border-slate-100 pt-4 mt-2">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Kategorien verwalten</label>
+                <div class="flex gap-2 mb-3">
+                    <input type="text" id="newCatName" placeholder="Name..." class="flex-1 p-3 bg-slate-50 rounded-xl text-sm font-bold outline-none border border-transparent focus:border-indigo-500">
+                    <button onclick="addCategory()" class="bg-indigo-600 text-white px-4 rounded-xl shadow-lg"><i class="fas fa-plus"></i></button>
+                </div>
+                <div id="manageCatsList" class="space-y-2 max-h-40 overflow-y-auto no-scrollbar"></div>
+            </div>
+
             <button onclick="exportBackupJSON()" class="w-full bg-indigo-50 text-indigo-700 p-4 rounded-xl font-bold flex items-center justify-center gap-2 border border-indigo-100">
-                <i class="fas fa-database"></i> JSON Backup laden
+                <i class="fas fa-database"></i> JSON Full Backup
             </button>
-            <button onclick="handleLogout()" class="w-full bg-slate-900 text-white p-4 rounded-xl font-bold mt-4">Abmelden</button>
+            <button onclick="handleLogout()" class="w-full bg-slate-900 text-white p-4 rounded-xl font-bold mt-2">Abmelden</button>
         </div>
     </div>
 
@@ -144,13 +146,13 @@
             <form id="expenseForm" class="space-y-4" onsubmit="handleFormSubmit(event)">
                 <input type="hidden" id="editId">
                 <div class="grid grid-cols-2 gap-4">
-                    <input type="number" id="betrag" placeholder="0,00" step="0.01" required class="p-4 bg-slate-50 rounded-2xl text-xl font-bold outline-none">
-                    <input type="date" id="datum" required class="p-4 bg-slate-50 rounded-2xl font-bold outline-none">
+                    <input type="number" id="betrag" placeholder="0,00" step="0.01" required class="p-4 bg-slate-50 rounded-2xl text-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                    <input type="date" id="datum" required class="p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                 </div>
-                <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none">
+                <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
                 <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mt-4">Kategorie</label>
                 <div id="categoryGrid" class="flex flex-wrap gap-2 mb-4"></div>
-                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-lg">Speichern</button>
+                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-5 rounded-2xl shadow-lg mt-2">Speichern</button>
                 <button type="button" id="deleteBtn" onclick="deleteCurrentEntry()" class="hidden w-full text-rose-500 font-bold py-4">Löschen</button>
             </form>
         </div>
@@ -171,7 +173,7 @@
         window.onload = function() {
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             db = firebase.firestore();
-            db.enablePersistence({synchronizeTabs: true}).catch(() => console.log("Offline Persistence disabled"));
+            db.enablePersistence({synchronizeTabs: true}).catch(() => console.log("Persistence offline"));
 
             firebase.auth().onAuthStateChanged(user => {
                 if (user) {
@@ -192,15 +194,14 @@
         };
 
         function updateOnlineStatus() {
-            const indicator = document.getElementById('cloudStatus');
-            if(indicator) indicator.className = `w-2 h-2 rounded-full ${navigator.onLine ? 'bg-emerald-500' : 'bg-amber-500'}`;
+            const ind = document.getElementById('cloudStatus');
+            if(ind) ind.className = `w-2 h-2 rounded-full ${navigator.onLine ? 'bg-emerald-500' : 'bg-amber-500'}`;
         }
 
         async function handleLogin() {
             const email = document.getElementById('authEmail').value;
             const pass = document.getElementById('authPassword').value;
-            try { await firebase.auth().signInWithEmailAndPassword(email, pass); } 
-            catch(e) { showToast("Fehler: " + e.message); }
+            try { await firebase.auth().signInWithEmailAndPassword(email, pass); } catch(e) { showToast("Login Fehler"); }
         }
 
         async function handleRegister() {
@@ -208,10 +209,8 @@
             const pass = document.getElementById('authPassword').value;
             try {
                 const cred = await firebase.auth().createUserWithEmailAndPassword(email, pass);
-                const userRef = db.collection('users').doc(cred.user.uid);
-                await userRef.collection('categories').add({name: 'Allgemein'});
-                await userRef.collection('categories').add({name: 'Haushalt'});
-            } catch(e) { showToast("Fehler: " + e.message); }
+                await db.collection('users').doc(cred.user.uid).collection('categories').add({name: 'Allgemein'});
+            } catch(e) { showToast("Registrierungs-Fehler"); }
         }
 
         function handleLogout() { firebase.auth().signOut().then(() => location.reload()); }
@@ -220,7 +219,7 @@
             const userRef = db.collection('users').doc(currentUser.uid);
             userRef.collection('categories').onSnapshot(snap => {
                 categories = snap.docs.map(d => ({id: d.id, ...d.data()}));
-                renderFilters(); renderCategoryGrid();
+                renderFilters(); renderCategoryGrid(); renderManageCatsList();
             });
             userRef.collection('ausgaben').onSnapshot(snap => {
                 expenses = snap.docs.map(d => ({id: d.id, ...d.data()}));
@@ -266,6 +265,31 @@
             document.getElementById('categoryGrid').innerHTML = categories.map(c => `<button type="button" onclick="selectedCategory='${c.id}';renderCategoryGrid()" class="px-4 py-3 rounded-xl border-2 text-[10px] font-bold uppercase ${selectedCategory===c.id?'border-indigo-600 bg-indigo-50 text-indigo-600':'border-transparent bg-slate-100 text-slate-500'}">${c.name}</button>`).join('');
         }
 
+        function renderManageCatsList() {
+            const list = document.getElementById('manageCatsList');
+            if(!list) return;
+            list.innerHTML = categories.map(c => `
+                <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <span class="text-sm font-bold text-slate-700">${c.name}</span>
+                    <button onclick="deleteCategory('${c.id}')" class="text-rose-500 p-1"><i class="fas fa-trash-alt"></i></button>
+                </div>
+            `).join('');
+        }
+
+        async function addCategory() {
+            const name = document.getElementById('newCatName').value.trim();
+            if(!name) return;
+            await db.collection('users').doc(currentUser.uid).collection('categories').add({ name: name });
+            document.getElementById('newCatName').value = '';
+            showToast("Kategorie erstellt");
+        }
+
+        async function deleteCategory(id) {
+            if(!confirm("Kategorie wirklich löschen?")) return;
+            await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete();
+            showToast("Kategorie entfernt");
+        }
+
         async function handleFormSubmit(e) {
             e.preventDefault();
             const id = document.getElementById('editId').value;
@@ -294,7 +318,7 @@
             document.getElementById('editId').value = '';
             document.getElementById('datum').value = new Date().toISOString().split('T')[0];
             document.getElementById('deleteBtn').classList.add('hidden');
-            selectedCategory = categories[0]?.id;
+            selectedCategory = categories[0]?.id || '';
             document.getElementById('addModal').classList.remove('hidden');
             renderCategoryGrid();
         };
@@ -306,7 +330,6 @@
             }
         }
 
-        // --- IMPORT / EXPORT (Deutsch/Sheets optimiert) ---
         function exportToCSV() {
             const exportData = expenses.map(e => {
                 const cat = categories.find(c => c.id === e.kategorieId)?.name || 'Diverse';
@@ -323,17 +346,18 @@
             const reader = new FileReader();
             reader.onload = async (e) => {
                 const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, {type: 'array'});
+                const workbook = XLSX.read(data, {type: 'array', cellDates: true});
                 const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
                 const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
                 for(let row of json) {
-                    let val = row.Betrag || row.betrag;
+                    let val = row.Betrag || row.betrag || row.VALUE;
                     if(val) {
                         let cleanBetrag = typeof val === 'string' ? parseFloat(val.replace(',', '.')) : parseFloat(val);
-                        await col.add({ datum: new Date().toISOString().split('T')[0], beschreibung: row.Beschreibung || 'Import', betrag: cleanBetrag, kategorieId: categories[0]?.id });
+                        let cleanDate = row.Datum ? new Date(row.Datum).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+                        await col.add({ datum: cleanDate, beschreibung: row.Beschreibung || 'Import', betrag: cleanBetrag, kategorieId: categories[0]?.id || '' });
                     }
                 }
-                showToast("Import abgeschlossen!"); closeModal('dataModal');
+                showToast("Import fertig!"); closeModal('dataModal');
             };
             reader.readAsArrayBuffer(input.files[0]);
         }
@@ -345,7 +369,7 @@
             const backup = { exportDatum: new Date().toISOString(), kategorien: catSnap.docs.map(d => d.data()), ausgaben: expSnap.docs.map(d => d.data()) };
             const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = "budget_backup.json"; a.click();
+            const a = document.createElement('a'); a.href = url; a.download = "full_backup.json"; a.click();
         }
 
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
