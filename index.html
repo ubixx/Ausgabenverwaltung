@@ -137,14 +137,37 @@
             });
         }
 
-        // --- EXPORT FUNKTION ---
+        // --- HELPER: Datumskonvertierung ---
+        function formatToGermanDate(isoStr) {
+            if (!isoStr) return '';
+            const parts = isoStr.split('-');
+            if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+            return isoStr;
+        }
+
+        function parseToIsoDate(germanStr) {
+            if (!germanStr) return new Date().toISOString().split('T')[0];
+            const str = String(germanStr).trim();
+            if (str.includes('-')) return str; // Bereits ISO
+            const parts = str.split('.');
+            if (parts.length === 3) {
+                let d = parts[0].padStart(2, '0');
+                let m = parts[1].padStart(2, '0');
+                let y = parts[2];
+                if (y.length === 2) y = "20" + y; // Jahr 24 -> 2024
+                return `${y}-${m}-${d}`;
+            }
+            return new Date().toISOString().split('T')[0]; // Fallback
+        }
+
+        // --- EXPORT FUNKTION (Deutsches Datum) ---
         function exportToExcel() {
             if (expenses.length === 0) { showToast("Keine Daten zum Exportieren!"); return; }
             
             const dataToExport = expenses.map(e => {
                 const kat = categories.find(c => c.id === e.kategorieId);
                 return {
-                    Datum: e.datum,
+                    Datum: formatToGermanDate(e.datum), // YYYY-MM-DD -> DD.MM.YYYY
                     Beschreibung: e.beschreibung,
                     Kategorie: kat ? kat.name : 'Allgemein',
                     'Betrag (€)': parseFloat(e.betrag).toFixed(2).replace('.', ','),
@@ -160,7 +183,7 @@
             showToast("Excel wird heruntergeladen...");
         }
 
-        // --- IMPORT FUNKTION MIT DUPLIKAT-PRÜFUNG ---
+        // --- IMPORT FUNKTION (Erkennt deutsches Datum) ---
         function handleImport(input) {
             const file = input.files[0];
             if (!file) return;
@@ -170,7 +193,8 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     const sheetName = workbook.SheetNames[0];
-                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+                    // raw: false sorgt dafür, dass formatierte Zellen als Text (z.B. 25.10.2024) gelesen werden
+                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false });
                     
                     let importedCount = 0;
                     let skippedCount = 0;
@@ -179,15 +203,16 @@
                     const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
                     
                     for (const row of json) {
-                        const datum = row.Datum || new Date().toISOString().split('T')[0];
+                        const rawDatum = row.Datum || '';
+                        const datum = parseToIsoDate(rawDatum); // DD.MM.YYYY -> YYYY-MM-DD
                         const beschreibung = row.Beschreibung || 'Importiert';
                         const betrag = parseFloat(String(row['Betrag (€)'] || row.Betrag || 0).replace(',', '.'));
                         
-                        // DUPLIKAT-CHECK: Datum, Beschreibung und Betrag identisch?
-                        const isDuplicate = expenses.some(e => 
-                            e.datum === datum && 
-                            e.beschreibung === beschreibung && 
-                            parseFloat(e.betrag) === betrag
+                        // DUPLIKAT-CHECK
+                        const isDuplicate = expenses.some(exp => 
+                            exp.datum === datum && 
+                            exp.beschreibung === beschreibung && 
+                            parseFloat(exp.betrag) === betrag
                         );
 
                         if (!isDuplicate) {
@@ -267,7 +292,7 @@
             list.innerHTML = filtered.map(e => {
                 const cat = categories.find(c => c.id === e.kategorieId);
                 total += parseFloat(e.betrag);
-                return `<div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-slate-50 cursor-pointer hover:shadow-md transition-shadow" onclick="editExpense('${e.id}')"><div><p class="font-black text-slate-900">${e.fotoUrl ? '<i class="fas fa-paperclip text-indigo-400 mr-2"></i>' : ''}${e.beschreibung}</p><p class="text-[10px] font-bold text-slate-400 uppercase mt-1">${new Date(e.datum).toLocaleDateString('de-DE')} • ${cat?.name || 'Allgemein'}</p></div><p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p></div>`;
+                return `<div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-slate-50 cursor-pointer hover:shadow-md transition-shadow" onclick="editExpense('${e.id}')"><div><p class="font-black text-slate-900">${e.fotoUrl ? '<i class="fas fa-paperclip text-indigo-400 mr-2"></i>' : ''}${e.beschreibung}</p><p class="text-[10px] font-bold text-slate-400 uppercase mt-1">${formatToGermanDate(e.datum)} • ${cat?.name || 'Allgemein'}</p></div><p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p></div>`;
             }).join('');
             document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
             document.getElementById('totalCountBadge').innerText = `${expenses.length} Einträge`;
