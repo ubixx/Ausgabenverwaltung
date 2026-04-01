@@ -79,7 +79,14 @@
             </div>
 
             <div class="border-t border-slate-100 pt-4"><label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Kategorien</label><div id="manageCatsList" class="space-y-2 mb-4"></div><div class="flex gap-2"><input type="text" id="newCatName" placeholder="Neue Kat..." class="flex-1 p-3 bg-slate-50 rounded-xl text-sm font-bold outline-none"><button onclick="addCategory()" class="bg-indigo-600 text-white px-4 rounded-xl shadow-lg active:scale-90 transition-transform"><i class="fas fa-plus"></i></button></div></div>
-            <button onclick="handleLogout()" class="w-full bg-slate-900 text-white p-4 rounded-xl font-bold mt-4 active:scale-95 transition-transform">Abmelden</button>
+            
+            <div class="border-t border-slate-100 pt-4 mt-2">
+                <button onclick="deleteAllData()" class="w-full bg-rose-50 text-rose-600 p-4 rounded-xl text-sm font-black flex items-center justify-center gap-2 border-2 border-rose-100 shadow-sm active:scale-95 transition-transform">
+                    <i class="fas fa-trash-alt"></i> Alle Ausgaben löschen
+                </button>
+            </div>
+
+            <button onclick="handleLogout()" class="w-full bg-slate-900 text-white p-4 rounded-xl font-bold mt-2 active:scale-95 transition-transform">Abmelden</button>
         </div>
     </div>
 
@@ -137,6 +144,32 @@
             });
         }
 
+        // --- NEU: ALLE DATEN LÖSCHEN ---
+        async function deleteAllData() {
+            if (expenses.length === 0) {
+                showToast("Es gibt keine Daten zum Löschen.");
+                return;
+            }
+            
+            // Sicherheitsabfrage
+            const isConfirmed = confirm("ACHTUNG: Möchtest du WIRKLICH alle Ausgaben löschen? Dieser Vorgang kann nicht rückgängig gemacht werden! (Deine Kategorien bleiben erhalten).");
+            
+            if (isConfirmed) {
+                showToast("Lösche Daten...");
+                const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+                
+                try {
+                    // Geht durch alle geladenen Ausgaben und löscht sie aus der Datenbank
+                    await Promise.all(expenses.map(exp => col.doc(exp.id).delete()));
+                    showToast("Alle Daten wurden gelöscht!");
+                    closeModal('dataModal');
+                } catch (err) {
+                    console.error("Fehler beim Löschen:", err);
+                    showToast("Fehler beim Löschen der Daten.");
+                }
+            }
+        }
+
         // --- HELPER: Datumskonvertierung ---
         function formatToGermanDate(isoStr) {
             if (!isoStr) return '';
@@ -148,26 +181,26 @@
         function parseToIsoDate(germanStr) {
             if (!germanStr) return new Date().toISOString().split('T')[0];
             const str = String(germanStr).trim();
-            if (str.includes('-')) return str; // Bereits ISO
+            if (str.includes('-')) return str; 
             const parts = str.split('.');
             if (parts.length === 3) {
                 let d = parts[0].padStart(2, '0');
                 let m = parts[1].padStart(2, '0');
                 let y = parts[2];
-                if (y.length === 2) y = "20" + y; // Jahr 24 -> 2024
+                if (y.length === 2) y = "20" + y; 
                 return `${y}-${m}-${d}`;
             }
-            return new Date().toISOString().split('T')[0]; // Fallback
+            return new Date().toISOString().split('T')[0]; 
         }
 
-        // --- EXPORT FUNKTION (Deutsches Datum) ---
+        // --- EXPORT FUNKTION ---
         function exportToExcel() {
             if (expenses.length === 0) { showToast("Keine Daten zum Exportieren!"); return; }
             
             const dataToExport = expenses.map(e => {
                 const kat = categories.find(c => c.id === e.kategorieId);
                 return {
-                    Datum: formatToGermanDate(e.datum), // YYYY-MM-DD -> DD.MM.YYYY
+                    Datum: formatToGermanDate(e.datum), 
                     Beschreibung: e.beschreibung,
                     Kategorie: kat ? kat.name : 'Allgemein',
                     'Betrag (€)': parseFloat(e.betrag).toFixed(2).replace('.', ','),
@@ -183,7 +216,7 @@
             showToast("Excel wird heruntergeladen...");
         }
 
-        // --- IMPORT FUNKTION (Erkennt deutsches Datum) ---
+        // --- IMPORT FUNKTION ---
         function handleImport(input) {
             const file = input.files[0];
             if (!file) return;
@@ -193,7 +226,6 @@
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     const sheetName = workbook.SheetNames[0];
-                    // raw: false sorgt dafür, dass formatierte Zellen als Text (z.B. 25.10.2024) gelesen werden
                     const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { raw: false });
                     
                     let importedCount = 0;
@@ -204,11 +236,10 @@
                     
                     for (const row of json) {
                         const rawDatum = row.Datum || '';
-                        const datum = parseToIsoDate(rawDatum); // DD.MM.YYYY -> YYYY-MM-DD
+                        const datum = parseToIsoDate(rawDatum); 
                         const beschreibung = row.Beschreibung || 'Importiert';
                         const betrag = parseFloat(String(row['Betrag (€)'] || row.Betrag || 0).replace(',', '.'));
                         
-                        // DUPLIKAT-CHECK
                         const isDuplicate = expenses.some(exp => 
                             exp.datum === datum && 
                             exp.beschreibung === beschreibung && 
@@ -240,7 +271,7 @@
                 }
             };
             reader.readAsArrayBuffer(file);
-            input.value = ''; // Reset für nächsten Upload
+            input.value = ''; 
         }
 
         async function handleFormSubmit(e) {
