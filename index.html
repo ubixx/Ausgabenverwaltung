@@ -144,22 +144,16 @@
             });
         }
 
-        // --- NEU: ALLE DATEN LÖSCHEN ---
         async function deleteAllData() {
             if (expenses.length === 0) {
                 showToast("Es gibt keine Daten zum Löschen.");
                 return;
             }
-            
-            // Sicherheitsabfrage
             const isConfirmed = confirm("ACHTUNG: Möchtest du WIRKLICH alle Ausgaben löschen? Dieser Vorgang kann nicht rückgängig gemacht werden! (Deine Kategorien bleiben erhalten).");
-            
             if (isConfirmed) {
                 showToast("Lösche Daten...");
                 const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
-                
                 try {
-                    // Geht durch alle geladenen Ausgaben und löscht sie aus der Datenbank
                     await Promise.all(expenses.map(exp => col.doc(exp.id).delete()));
                     showToast("Alle Daten wurden gelöscht!");
                     closeModal('dataModal');
@@ -170,7 +164,6 @@
             }
         }
 
-        // --- HELPER: Datumskonvertierung ---
         function formatToGermanDate(isoStr) {
             if (!isoStr) return '';
             const parts = isoStr.split('-');
@@ -193,7 +186,6 @@
             return new Date().toISOString().split('T')[0]; 
         }
 
-        // --- EXPORT FUNKTION ---
         function exportToExcel() {
             if (expenses.length === 0) { showToast("Keine Daten zum Exportieren!"); return; }
             
@@ -216,7 +208,7 @@
             showToast("Excel wird heruntergeladen...");
         }
 
-        // --- IMPORT FUNKTION ---
+        // --- IMPORT FUNKTION MIT KATEGORIE-ERSTELLUNG ---
         function handleImport(input) {
             const file = input.files[0];
             if (!file) return;
@@ -232,7 +224,8 @@
                     let skippedCount = 0;
                     
                     showToast("Prüfe Daten...");
-                    const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+                    const expensesCol = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+                    const categoriesCol = db.collection('users').doc(currentUser.uid).collection('categories');
                     
                     for (const row of json) {
                         const rawDatum = row.Datum || '';
@@ -249,12 +242,23 @@
                         if (!isDuplicate) {
                             const katName = row.Kategorie || 'Allgemein';
                             let kat = categories.find(c => c.name.toLowerCase() === katName.toLowerCase());
+                            let targetCategoryId = '';
+
+                            // Wenn die Kategorie nicht existiert, erstellen wir sie direkt in der Datenbank
+                            if (kat) {
+                                targetCategoryId = kat.id;
+                            } else {
+                                const newCatRef = await categoriesCol.add({ name: katName });
+                                targetCategoryId = newCatRef.id;
+                                // In der lokalen Liste speichern, damit Folge-Zeilen sie sofort finden
+                                categories.push({ id: targetCategoryId, name: katName });
+                            }
                             
-                            await col.add({
+                            await expensesCol.add({
                                 datum: datum,
                                 beschreibung: beschreibung,
                                 betrag: betrag,
-                                kategorieId: kat ? kat.id : (categories[0]?.id || ''),
+                                kategorieId: targetCategoryId,
                                 fotoUrl: row.Beleg_Link || row.Link || ''
                             });
                             importedCount++;
@@ -265,6 +269,8 @@
                     
                     showToast(`${importedCount} importiert, ${skippedCount} übersprungen.`);
                     closeModal('dataModal');
+                    // Render UI zur Sicherheit nochmal anstoßen
+                    renderUI();
                 } catch (err) {
                     console.error(err);
                     showToast("Fehler beim Import!");
