@@ -73,7 +73,9 @@
     <div id="dataModal" class="hidden fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-6">
         <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-2"><h3 class="text-xl font-black">Daten-Verwaltung</h3><button onclick="closeModal('dataModal')"><i class="fas fa-times text-slate-400 text-xl"></i></button></div>
+            
             <button onclick="exportToExcel()" class="w-full bg-emerald-50 text-emerald-700 p-4 rounded-xl text-sm font-black flex items-center justify-center gap-2 border-2 border-emerald-100 shadow-sm active:scale-95 transition-transform"><i class="fas fa-file-excel"></i> Excel Export</button>
+            
             <div class="bg-slate-50 p-5 rounded-2xl border-2 border-dashed border-slate-200">
                 <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-3 text-center">Daten-Import</label>
                 <input type="file" id="importExcel" accept=".xlsx, .xls" class="hidden" onchange="handleImport(this)">
@@ -142,7 +144,9 @@
             messagingSenderId: "594713378906",
             appId: "1:594713378906:web:7929f7a875159336101863"
         };
+        
         let db, currentUser, expenses = [], categories = [], activeFilter = 'all', activeYear = 'all';
+        let currentFilteredExpenses = []; // WICHTIG: Wieder da für den Export!
         
         window.onload = function() {
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -157,7 +161,6 @@
             const userRef = db.collection('users').doc(currentUser.uid);
             userRef.collection('categories').onSnapshot(snap => { 
                 categories = snap.docs.map(d => ({id: d.id, ...d.data()})); 
-                // Alphabetische Sortierung
                 categories.sort((a,b) => a.name.localeCompare(b.name));
                 renderFilters(); renderCategoryDropdown(); renderManageCatsList(); 
             });
@@ -168,7 +171,6 @@
             });
         }
 
-        // --- KATEGORIEN EDITIEREN ---
         async function editCategory(id, currentName) {
             const newName = prompt("Kategorie umbenennen:", currentName);
             if (newName && newName.trim() !== "" && newName !== currentName) {
@@ -177,7 +179,6 @@
             }
         }
 
-        // --- DROP-DOWN RENDERN ---
         function renderCategoryDropdown() {
             const select = document.getElementById('categoryDropdown');
             select.innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
@@ -217,6 +218,73 @@
         }
 
         function setYearFilter(y) { activeYear = y; renderUI(); }
+
+        // --- EXPORT WIEDERHERGESTELLT ---
+        function exportToExcel() {
+            if (currentFilteredExpenses.length === 0) {
+                showToast("Keine Daten zum Exportieren!");
+                return;
+            }
+            const dataToExport = currentFilteredExpenses.map(e => {
+                const kat = categories.find(c => c.id === e.kategorieId);
+                return {
+                    Datum: formatToGermanDate(e.datum), 
+                    Beschreibung: e.beschreibung,
+                    Kategorie: kat ? kat.name : 'Allgemein',
+                    'Betrag (€)': parseFloat(e.betrag).toFixed(2).replace('.', ','),
+                    Beleg_Link: e.fotoUrl || ''
+                };
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Ausgaben");
+            
+            XLSX.writeFile(workbook, "Budget_Cloud_Export.xlsx");
+            showToast("Export gestartet!");
+            closeModal('dataModal');
+        }
+
+        // --- IMPORT WIEDERHERGESTELLT ---
+        function parseToIsoDate(germanStr) {
+            if (!germanStr) return new Date().toISOString().split('T')[0];
+            const str = String(germanStr).trim();
+            if (str.includes('-')) return str; 
+            const parts = str.split('.');
+            if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+            return new Date().toISOString().split('T')[0]; 
+        }
+
+        function handleImport(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                const expensesCol = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+                const categoriesCol = db.collection('users').doc(currentUser.uid).collection('categories');
+                
+                showToast("Importiere...");
+                for (const row of json) {
+                    const datum = parseToIsoDate(row.Datum || ''); 
+                    const beschreibung = row.Beschreibung || 'Import';
+                    const betrag = parseFloat(String(row['Betrag (€)'] || 0).replace(',', '.'));
+                    
+                    if (!expenses.some(exp => exp.datum === datum && exp.beschreibung === beschreibung && parseFloat(exp.betrag) === betrag)) {
+                        const katName = row.Kategorie || 'Allgemein';
+                        let kat = categories.find(c => c.name.toLowerCase() === katName.toLowerCase());
+                        let targetId = kat ? kat.id : (await categoriesCol.add({name: katName})).id;
+                        await expensesCol.add({ datum, beschreibung, betrag, kategorieId: targetId, fotoUrl: row.Beleg_Link || '' });
+                    }
+                }
+                showToast("Import fertig!"); 
+                closeModal('dataModal');
+                input.value = ''; // Reset input
+            };
+            reader.readAsArrayBuffer(file);
+        }
 
         async function deleteAllData() {
             if (expenses.length === 0) return;
@@ -276,15 +344,22 @@
         function renderUI() {
             const list = document.getElementById('expenseList');
             const search = document.getElementById('searchInput').value.toLowerCase();
-            const filtered = expenses.filter(e => (activeFilter === 'all' || e.kategorieId === activeFilter) && (activeYear === 'all' || e.datum.startsWith(activeYear)) && e.beschreibung.toLowerCase().includes(search));
+            
+            // WICHTIG: Globale Variable wird hier wieder gefüllt
+            currentFilteredExpenses = expenses.filter(e => 
+                (activeFilter === 'all' || e.kategorieId === activeFilter) && 
+                (activeYear === 'all' || e.datum.startsWith(activeYear)) && 
+                e.beschreibung.toLowerCase().includes(search)
+            );
+            
             let total = 0;
-            list.innerHTML = filtered.map(e => {
+            list.innerHTML = currentFilteredExpenses.map(e => {
                 const cat = categories.find(c => c.id === e.kategorieId);
                 total += parseFloat(e.betrag);
                 return `<div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-slate-50 cursor-pointer hover:shadow-md transition-shadow" onclick="editExpense('${e.id}')"><div><p class="font-black text-slate-900">${e.fotoUrl ? '<i class="fas fa-paperclip text-indigo-400 mr-2"></i>' : ''}${e.beschreibung}</p><p class="text-xs font-bold text-slate-500 mt-1">${formatToGermanDate(e.datum)} • ${cat?.name || 'Allgemein'}</p></div><p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p></div>`;
             }).join('');
             document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
-            document.getElementById('totalCountBadge').innerText = `${filtered.length} Einträge`;
+            document.getElementById('totalCountBadge').innerText = `${currentFilteredExpenses.length} Einträge`;
         }
 
         function openCurrentLink() { 
