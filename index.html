@@ -157,15 +157,23 @@
 
         // Drive API initialisieren
         function gapiLoaded() { gapi.load('picker', () => pickerInited = true); }
-        function gisLoaded() { 
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: DRIVE_CLIENT_ID, scope: SCOPES, callback: (response) => {
-                    if (response.error !== undefined) { throw (response); }
-                    accessToken = response.access_token;
-                    showPicker();
-                },
-            });
-        }
+       function gisLoaded() { 
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: DRIVE_CLIENT_ID, 
+        scope: SCOPES, 
+        ux_mode: 'popup',
+        callback: (response) => {
+            // NEU: Verhindert, dass die App abstürzt, wenn der User das Fenster schließt
+            if (response.error) { 
+                console.error("Google Auth Fehler:", response);
+                showToast("Anmeldung abgebrochen oder fehlgeschlagen.");
+                return; 
+            }
+            accessToken = response.access_token;
+            showPicker();
+        },
+    });
+}
         
         // Beide Skripte nach dem Laden aufrufen
         window.onload = function() {
@@ -181,14 +189,23 @@
         };
 
         // --- DER GOOGLE DRIVE PICKER ---
-        function openDrivePicker() {
-            if (!DRIVE_API_KEY.includes('HIER') && !DRIVE_CLIENT_ID.includes('HIER')) {
-                if (!accessToken) { tokenClient.requestAccessToken({prompt: 'consent'}); } 
-                else { showPicker(); }
-            } else {
-                alert("Bitte erst API-Key und Client-ID im Code eintragen!");
-            }
+       function openDrivePicker() {
+    // NEU: Prüfen, ob Google wirklich fertig geladen ist
+    if (!pickerInited) {
+        showToast("Google lädt noch... Gleich nochmal versuchen!");
+        return;
+    }
+
+    if (!DRIVE_API_KEY.includes('HIER') && !DRIVE_CLIENT_ID.includes('HIER')) {
+        if (!accessToken) { 
+            tokenClient.requestAccessToken({prompt: 'consent'}); 
+        } else { 
+            showPicker(); 
         }
+    } else {
+        alert("Bitte erst API-Key und Client-ID im Code eintragen!");
+    }
+}
 
         function showPicker() {
             const view = new google.picker.DocsView(google.picker.ViewId.PDFS);
