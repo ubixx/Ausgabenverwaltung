@@ -2,95 +2,142 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Budget Cloud | Pro</title>
-    
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
-
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        /* Entfernt den blauen Rahmen beim Klicken auf Handys */
-        * { -webkit-tap-highlight-color: transparent; }
+        :root { --app-primary: #6366f1; --app-bg: #f8fafc; }
+        body { background-color: var(--app-bg); -webkit-tap-highlight-color: transparent; padding-top: env(safe-area-inset-top); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        #toast { visibility: hidden; min-width: 280px; background-color: #1e293b; color: #fff; text-align: center; border-radius: 16px; padding: 20px; position: fixed; z-index: 9999; left: 50%; bottom: 40px; transform: translateX(-50%); font-weight: bold; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+        #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 40px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 40px; opacity: 1;} to {bottom: 0; opacity: 0;} }
     </style>
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="min-h-screen font-sans text-slate-800">
+    <div id="toast">Nachricht</div>
 
-    <div class="max-w-md mx-auto p-4 pb-24">
-        
-        <header class="flex justify-between items-center mb-6 pt-2">
-            <h1 class="text-2xl font-black text-blue-600 tracking-tight">BUDGET<span class="text-gray-800">CLOUD</span></h1>
-            <div id="userAvatar" class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold border-2 border-white shadow-sm">
-                ?
+    <div id="splashScreen" class="fixed inset-0 bg-white z-[1000] flex flex-col items-center justify-center p-8 transition-opacity duration-500">
+        <div class="w-20 h-20 bg-indigo-600 text-white rounded-3xl flex items-center justify-center text-4xl mb-4 shadow-2xl animate-pulse"><i class="fas fa-wallet"></i></div>
+        <p class="text-slate-400 font-bold text-xs uppercase tracking-widest">Budget Cloud lädt...</p>
+    </div>
+
+    <div id="authScreen" class="hidden min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 z-50">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl text-center">
+            <h2 class="text-2xl font-black text-slate-900 mb-6">Login</h2>
+            <form id="authForm" class="space-y-4" onsubmit="event.preventDefault()">
+                <input type="email" id="authEmail" placeholder="E-Mail" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-center">
+                <input type="password" id="authPassword" placeholder="Passwort" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 text-center">
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="handleLogin()" class="flex-1 bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Login</button>
+                    <button type="button" onclick="handleRegister()" class="flex-1 bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">Neu</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="mainApp" class="hidden flex flex-col min-h-screen">
+        <header class="p-6 bg-white border-b border-slate-100 sticky top-0 z-30">
+            <div class="flex justify-between items-start">
+                <div><h1 class="text-3xl font-black text-slate-900" id="totalAmount">0,00 €</h1><p class="text-slate-400 font-bold text-xs uppercase tracking-widest" id="totalCountBadge">0 Einträge</p></div>
+                <button onclick="document.getElementById('dataModal').classList.remove('hidden')" class="w-12 h-12 bg-slate-50 text-slate-900 rounded-2xl flex items-center justify-center text-xl transition-transform active:scale-90"><i class="fas fa-cog"></i></button>
             </div>
         </header>
 
-        <div class="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
-            <div class="bg-blue-600 p-5">
-                <h2 class="text-white font-bold text-lg flex items-center gap-2">
-                    <span>📝</span> Neuer Eintrag
-                </h2>
+        <div class="px-6 py-4 bg-white/95 backdrop-blur-md sticky top-[85px] z-20 border-b border-slate-100">
+            <div class="flex gap-2 relative">
+                <div class="relative flex-1">
+                    <input type="text" id="searchInput" placeholder="Suchen..." onkeyup="renderUI()" class="w-full p-4 pl-12 bg-slate-100 border-none rounded-2xl text-sm font-bold outline-none">
+                    <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                </div>
+                <select id="yearFilter" onchange="setYearFilter(this.value)" class="p-4 bg-slate-100 border-none rounded-2xl text-sm font-bold outline-none text-slate-700 cursor-pointer appearance-none text-center min-w-[100px]">
+                    <option value="all">Alle Jahre</option>
+                </select>
             </div>
-            
-            <div class="p-6 space-y-5">
-                <div>
-                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 ml-1">Beschreibung</label>
-                    <input type="text" id="beschreibung" 
-                           class="w-full p-4 text-base bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl transition-all outline-none" 
-                           placeholder="Was hast du gekauft?">
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 ml-1">Betrag (€)</label>
-                        <input type="number" id="betrag" step="0.01"
-                               class="w-full p-4 text-base font-bold bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none" 
-                               placeholder="0,00">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 ml-1">Datum</label>
-                        <input type="date" id="datum"
-                               class="w-full p-4 text-base bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl outline-none">
-                    </div>
-                </div>
-
-                <div class="pt-2">
-                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">Beleg (Optional)</label>
-                    <button onclick="openDrivePicker()" 
-                            class="w-full flex items-center justify-center gap-3 bg-gray-50 hover:bg-gray-100 text-gray-600 font-semibold py-4 rounded-2xl border-2 border-dashed border-gray-300 transition-all active:scale-95">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" class="w-5 h-5">
-                        <span id="driveStatus">PDF aus Drive wählen</span>
-                    </button>
-                    <input type="hidden" id="manualLink">
-                </div>
-
-                <button onclick="speichern()" 
-                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 rounded-2xl shadow-lg shadow-blue-200 active:scale-95 transition-all text-lg mt-4">
-                    Eintrag speichern
-                </button>
-            </div>
+            <div id="filterBar" class="mt-4 flex gap-2 overflow-x-auto no-scrollbar pb-1"></div>
         </div>
 
-        <div class="mt-10">
-            <h3 class="text-gray-500 font-bold text-sm uppercase tracking-widest mb-4 ml-1">Letzte Ausgaben</h3>
-            <div id="liste" class="space-y-3">
-                </div>
+        <div id="expenseList" class="flex-1 p-6 space-y-4 pb-32"></div>
+
+        <div class="fixed bottom-0 left-0 right-0 p-6 flex justify-center z-40 mb-[env(safe-area-inset-bottom)]">
+            <button id="addExpenseBtn" class="w-full max-w-md bg-indigo-600 text-white font-bold py-5 rounded-2xl flex items-center justify-center gap-3 shadow-xl active:scale-95 transition-transform"><i class="fas fa-plus"></i> Neuer Eintrag</button>
         </div>
     </div>
 
-    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full text-sm font-medium shadow-2xl opacity-0 transition-opacity pointer-events-none">
+    <div id="dataModal" class="hidden fixed inset-0 bg-slate-900/60 z-[700] flex items-center justify-center p-6">
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-2"><h3 class="text-xl font-black">Daten-Verwaltung</h3><button onclick="closeModal('dataModal')"><i class="fas fa-times text-slate-400 text-xl"></i></button></div>
+            <button onclick="exportToExcel()" class="w-full bg-emerald-50 text-emerald-700 p-4 rounded-xl text-sm font-black flex items-center justify-center gap-2 border-2 border-emerald-100 shadow-sm active:scale-95 transition-transform"><i class="fas fa-file-excel"></i> Excel Export</button>
+            <div class="bg-slate-50 p-5 rounded-2xl border-2 border-dashed border-slate-200">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-3 text-center">Daten-Import</label>
+                <input type="file" id="importExcel" accept=".xlsx, .xls" class="hidden" onchange="handleImport(this)">
+                <button onclick="document.getElementById('importExcel').click()" class="w-full bg-white text-slate-600 p-3 rounded-xl text-xs font-bold shadow-sm border border-slate-200 active:scale-95 transition-transform"><i class="fas fa-file-import mr-2"></i> Datei auswählen</button>
+            </div>
+            <div class="border-t border-slate-100 pt-4">
+                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Kategorien verwalten (A-Z)</label>
+                <div id="manageCatsList" class="space-y-2 mb-4"></div>
+                <div class="flex gap-2">
+                    <input type="text" id="newCatName" placeholder="Neue Kat..." class="flex-1 p-3 bg-slate-50 rounded-xl text-sm font-bold outline-none">
+                    <button onclick="addCategory()" class="bg-indigo-600 text-white px-4 rounded-xl shadow-lg active:scale-90 transition-transform"><i class="fas fa-plus"></i></button>
+                </div>
+            </div>
+            <div class="border-t border-slate-100 pt-4 mt-2"><button onclick="deleteAllData()" class="w-full bg-rose-50 text-rose-600 p-4 rounded-xl text-sm font-black flex items-center justify-center gap-2 border-2 border-rose-100 shadow-sm active:scale-95 transition-transform"><i class="fas fa-trash-alt"></i> Alle Ausgaben löschen</button></div>
+            <button onclick="handleLogout()" class="w-full bg-slate-900 text-white p-4 rounded-xl font-bold mt-2 active:scale-95 transition-transform">Abmelden</button>
+        </div>
+    </div>
+
+    <div id="addModal" class="hidden fixed inset-0 bg-slate-900/60 z-[600] flex items-end sm:items-center justify-center">
+        <div class="bg-white w-full max-w-lg rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl max-h-[95vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-6"><h3 class="text-xl font-black" id="modalTitle">Eintrag</h3><button onclick="closeModal('addModal')"><i class="fas fa-times text-slate-400"></i></button></div>
+            <form id="expenseForm" class="space-y-5" onsubmit="handleFormSubmit(event)">
+                <input type="hidden" id="editId">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase px-1">Betrag (€)</label><input type="number" id="betrag" placeholder="0,00" step="0.01" required class="w-full p-4 bg-slate-50 rounded-2xl text-xl font-black outline-none border-2 border-transparent focus:border-indigo-500 text-center"></div>
+                    <div class="space-y-1"><label class="text-[10px] font-bold text-slate-400 uppercase px-1">Datum</label><input type="date" id="datum" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500"></div>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase px-1">Beschreibung</label>
+                    <input type="text" id="beschreibung" placeholder="Wofür?" required class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500">
+                </div>
+                
+                <div class="bg-slate-50 border-2 border-slate-100 rounded-3xl p-5 space-y-3">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block text-center">Beleg Link</label>
+                    <div class="flex gap-2">
+                        <div class="relative flex-1">
+                            <input type="url" id="manualLink" placeholder="https://..." class="w-full p-4 pl-12 bg-white rounded-2xl text-sm font-medium border border-slate-200 outline-none focus:border-indigo-500 transition-colors">
+                            <i class="fas fa-link absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400"></i>
+                        </div>
+                        
+                        <button type="button" onclick="openDrivePicker()" class="w-12 h-14 bg-white border border-slate-200 text-blue-500 rounded-2xl flex items-center justify-center active:scale-90 transition-transform shadow-sm" title="Aus Google Drive wählen"><i class="fab fa-google-drive text-xl"></i></button>
+                        
+                        <button type="button" onclick="pasteFromClipboard()" class="w-12 h-14 bg-white border border-slate-200 text-slate-500 rounded-2xl flex items-center justify-center active:scale-90 transition-transform shadow-sm" title="Einfügen"><i class="fas fa-paste"></i></button>
+                        <button type="button" id="openLinkBtn" onclick="openCurrentLink()" class="hidden w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-transform"><i class="fas fa-external-link-alt"></i></button>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-slate-400 uppercase px-1">Kategorie auswählen</label>
+                    <select id="categoryDropdown" class="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500 appearance-none text-slate-700 cursor-pointer">
+                    </select>
+                </div>
+
+                <button type="submit" id="saveBtn" class="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl mt-2 active:scale-95 transition-transform">Speichern</button>
+                <button type="button" id="deleteBtn" onclick="deleteCurrentEntry()" class="hidden w-full text-rose-500 font-bold py-2">Löschen</button>
+            </form>
+        </div>
     </div>
 
     <script>
-        // === 1. KONFIGURATION (Bitte hier deine Daten eintragen) ===
-         const firebaseConfig = {
+        // === 1. DEINE FIREBASE DATEN (unverändert) ===
+        const firebaseConfig = {
             apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
             authDomain: "meinbudgetcloud.firebaseapp.com",
             projectId: "meinbudgetcloud",
@@ -98,54 +145,69 @@
             messagingSenderId: "594713378906",
             appId: "1:594713378906:web:7929f7a875159336101863"
         };
-
+        
+        // === 2. DEINE GOOGLE DRIVE DATEN (HIER EINTRAGEN!) ===
         const DRIVE_API_KEY = 'AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE';
         const DRIVE_CLIENT_ID = '594713378906-k8ivighcb2f02vemis1ngneu54418btp.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
-
-        // === 2. INITIALISIERUNG ===
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
+        
         let tokenClient;
         let accessToken = null;
         let pickerInited = false;
-        let gapiInited = false;
 
-        // Datum auf heute setzen
-        document.getElementById('datum').valueAsDate = new Date();
-
-        // Google Libs laden
-        function gapiLoaded() {
-            gapi.load('client:picker', async () => {
-                await gapi.client.init({ apiKey: DRIVE_API_KEY, discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] });
-                gapiInited = true;
-            });
-        }
-
-        function gisLoaded() {
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: DRIVE_CLIENT_ID,
-                scope: SCOPES,
-                callback: (response) => {
-                    if (response.error) return;
-                    accessToken = response.access_token;
-                    createPicker();
-                },
-            });
-            pickerInited = true;
-        }
-
-        // === 3. FUNKTIONEN ===
-
-        function openDrivePicker() {
-            if (!accessToken) {
-                tokenClient.requestAccessToken({prompt: 'consent'});
-            } else {
-                createPicker();
+        // Drive API initialisieren
+        function gapiLoaded() { gapi.load('picker', () => pickerInited = true); }
+       function gisLoaded() { 
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: DRIVE_CLIENT_ID, 
+        scope: SCOPES, 
+        ux_mode: 'popup',
+        callback: (response) => {
+            // NEU: Verhindert, dass die App abstürzt, wenn der User das Fenster schließt
+            if (response.error) { 
+                console.error("Google Auth Fehler:", response);
+                showToast("Anmeldung abgebrochen oder fehlgeschlagen.");
+                return; 
             }
-        }
+            accessToken = response.access_token;
+            showPicker();
+        },
+    });
+}
+        
+        // Beide Skripte nach dem Laden aufrufen
+        window.onload = function() {
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            firebase.auth().onAuthStateChanged(user => {
+                if (user) { currentUser = user; document.getElementById('authScreen').classList.add('hidden'); document.getElementById('mainApp').classList.remove('hidden'); startSync(); }
+                else { currentUser = null; document.getElementById('mainApp').classList.add('hidden'); document.getElementById('authScreen').classList.remove('hidden'); hideSplash(); }
+            });
+            // Initialisiere Drive-Picker Skripte
+            gapi.load('picker', {callback: gapiLoaded});
+            gisLoaded();
+        };
 
-        function createPicker() {
+        // --- DER GOOGLE DRIVE PICKER ---
+       function openDrivePicker() {
+    // NEU: Prüfen, ob Google wirklich fertig geladen ist
+    if (!pickerInited) {
+        showToast("Google lädt noch... Gleich nochmal versuchen!");
+        return;
+    }
+
+    if (!DRIVE_API_KEY.includes('HIER') && !DRIVE_CLIENT_ID.includes('HIER')) {
+        if (!accessToken) { 
+            tokenClient.requestAccessToken({prompt: 'consent'}); 
+        } else { 
+            showPicker(); 
+        }
+    } else {
+        alert("Bitte erst API-Key und Client-ID im Code eintragen!");
+    }
+}
+
+        function showPicker() {
             const view = new google.picker.DocsView(google.picker.ViewId.PDFS);
             const picker = new google.picker.PickerBuilder()
                 .addView(view)
@@ -159,81 +221,58 @@
         function pickerCallback(data) {
             if (data[google.picker.Response.ACTION] == google.picker.Action.PICKED) {
                 const doc = data[google.picker.Response.DOCUMENTS][0];
-                document.getElementById('manualLink').value = doc[google.picker.Document.URL];
-                document.getElementById('driveStatus').innerText = "📎 Beleg verknüpft";
-                if(!document.getElementById('beschreibung').value) {
-                    document.getElementById('beschreibung').value = doc[google.picker.Document.NAME].replace('.pdf', '');
-                }
-                showToast("PDF verknüpft!");
+                const url = doc[google.picker.Document.URL];
+                const name = doc[google.picker.Document.NAME];
+                
+                // Trage den Link ein
+                document.getElementById('manualLink').value = url;
+                updateLinkButton();
+                
+                // Trage den Dateinamen als Beschreibung ein (falls Feld leer ist)
+                const descField = document.getElementById('beschreibung');
+                if(!descField.value) { descField.value = name.replace('.pdf', ''); }
+                
+                showToast("Aus Drive importiert!");
             }
         }
 
-        async function speichern() {
-            const b = document.getElementById('beschreibung').value;
-            const v = document.getElementById('betrag').value;
-            const d = document.getElementById('datum').value;
-            const l = document.getElementById('manualLink').value;
-
-            if(!b || !v) {
-                showToast("Bitte alles ausfüllen!");
-                return;
-            }
-
-            try {
-                await db.collection('budget').add({
-                    beschreibung: b,
-                    betrag: parseFloat(v),
-                    datum: d,
-                    link: l,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                showToast("Gespeichert!");
-                // Reset
-                document.getElementById('beschreibung').value = "";
-                document.getElementById('betrag').value = "";
-                document.getElementById('manualLink').value = "";
-                document.getElementById('driveStatus').innerText = "PDF aus Drive wählen";
-                laden();
-            } catch (e) {
-                showToast("Fehler beim Speichern");
-            }
+        // --- RESTLICHE APP-FUNKTIONEN (unverändert) ---
+        let db, currentUser, expenses = [], categories = [], activeFilter = 'all', activeYear = 'all', currentFilteredExpenses = [];
+        
+        function startSync() {
+            const userRef = db.collection('users').doc(currentUser.uid);
+            userRef.collection('categories').onSnapshot(snap => { categories = snap.docs.map(d => ({id: d.id, ...d.data()})); categories.sort((a,b) => a.name.localeCompare(b.name)); renderFilters(); renderCategoryDropdown(); renderManageCatsList(); });
+            userRef.collection('ausgaben').onSnapshot(snap => { expenses = snap.docs.map(d => ({id: d.id, ...d.data()})); expenses.sort((a,b) => new Date(b.datum) - new Date(a.datum)); updateYearDropdown(); renderUI(); hideSplash(); });
         }
-
-        function laden() {
-            db.collection('budget').orderBy('datum', 'desc').limit(10).onSnapshot(snap => {
-                const liste = document.getElementById('liste');
-                liste.innerHTML = "";
-                snap.forEach(doc => {
-                    const item = doc.data();
-                    const card = `
-                        <div class="bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border border-gray-50">
-                            <div>
-                                <p class="font-bold text-gray-800">${item.beschreibung}</p>
-                                <p class="text-xs text-gray-400">${item.datum} ${item.link ? '• 📎 Beleg' : ''}</p>
-                            </div>
-                            <div class="text-right">
-                                <p class="font-black text-blue-600">-${item.betrag.toFixed(2)} €</p>
-                            </div>
-                        </div>
-                    `;
-                    liste.innerHTML += card;
-                });
-            });
-        }
-
-        function showToast(msg) {
-            const t = document.getElementById('toast');
-            t.innerText = msg;
-            t.style.opacity = "1";
-            setTimeout(() => t.style.opacity = "0", 3000);
-        }
-
-        // Start
-        window.onload = () => {
-            gapiLoaded();
-            gisLoaded();
-            laden();
-        };
+        async function editCategory(id, currentName) { const newName = prompt("Kategorie umbenennen:", currentName); if (newName && newName.trim() !== "" && newName !== currentName) { await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({ name: newName.trim() }); showToast("Umbenannt!"); } }
+        function renderCategoryDropdown() { document.getElementById('categoryDropdown').innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join(''); }
+        function renderManageCatsList() { document.getElementById('manageCatsList').innerHTML = categories.map(c => `<div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl"><span class="font-bold text-sm text-slate-700">${c.name}</span><div class="flex gap-3"><button onclick="editCategory('${c.id}', '${c.name}')" class="text-indigo-500 p-2"><i class="fas fa-pen"></i></button><button onclick="deleteCategory('${c.id}')" class="text-rose-500 p-2"><i class="fas fa-trash"></i></button></div></div>`).join(''); }
+        async function pasteFromClipboard() { try { const text = await navigator.clipboard.readText(); document.getElementById('manualLink').value = text; updateLinkButton(); showToast("Eingefügt!"); } catch (err) { showToast("Bitte Strg+V nutzen"); } }
+        function updateYearDropdown() { const years = [...new Set(expenses.map(e => e.datum.substring(0,4)))].sort((a,b) => b-a); const select = document.getElementById('yearFilter'); const currentVal = select.value; select.innerHTML = `<option value="all">Alle Jahre</option>` + years.map(y => `<option value="${y}">${y}</option>`).join(''); select.value = years.includes(currentVal) ? currentVal : 'all'; activeYear = select.value; }
+        function setYearFilter(y) { activeYear = y; renderUI(); }
+        function exportToExcel() { if (currentFilteredExpenses.length === 0) { showToast("Keine Daten zum Exportieren!"); return; } const dataToExport = currentFilteredExpenses.map(e => { const kat = categories.find(c => c.id === e.kategorieId); return { Datum: formatToGermanDate(e.datum), Beschreibung: e.beschreibung, Kategorie: kat ? kat.name : 'Allgemein', 'Betrag (€)': parseFloat(e.betrag).toFixed(2).replace('.', ','), Beleg_Link: e.fotoUrl || '' }; }); const worksheet = XLSX.utils.json_to_sheet(dataToExport); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Ausgaben"); XLSX.writeFile(workbook, "Budget_Cloud_Export.xlsx"); showToast("Export gestartet!"); closeModal('dataModal'); }
+        function parseToIsoDate(germanStr) { if (!germanStr) return new Date().toISOString().split('T')[0]; const str = String(germanStr).trim(); if (str.includes('-')) return str; const parts = str.split('.'); if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`; return new Date().toISOString().split('T')[0]; }
+        function handleImport(input) { const file = input.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (e) => { const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: 'array' }); const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]); const expensesCol = db.collection('users').doc(currentUser.uid).collection('ausgaben'); const categoriesCol = db.collection('users').doc(currentUser.uid).collection('categories'); showToast("Importiere..."); for (const row of json) { const datum = parseToIsoDate(row.Datum || ''); const beschreibung = row.Beschreibung || 'Import'; const betrag = parseFloat(String(row['Betrag (€)'] || 0).replace(',', '.')); if (!expenses.some(exp => exp.datum === datum && exp.beschreibung === beschreibung && parseFloat(exp.betrag) === betrag)) { const katName = row.Kategorie || 'Allgemein'; let kat = categories.find(c => c.name.toLowerCase() === katName.toLowerCase()); let targetId = kat ? kat.id : (await categoriesCol.add({name: katName})).id; await expensesCol.add({ datum, beschreibung, betrag, kategorieId: targetId, fotoUrl: row.Beleg_Link || '' }); } } showToast("Import fertig!"); closeModal('dataModal'); input.value = ''; }; reader.readAsArrayBuffer(file); }
+        async function deleteAllData() { if (expenses.length === 0) return; if (confirm("Wirklich ALLES löschen?")) { const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); await Promise.all(expenses.map(exp => col.doc(exp.id).delete())); showToast("Gelöscht!"); closeModal('dataModal'); } }
+        function formatToGermanDate(isoStr) { if (!isoStr) return ''; const parts = isoStr.split('-'); return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : isoStr; }
+        async function handleFormSubmit(e) { e.preventDefault(); const id = document.getElementById('editId').value; let rawLink = document.getElementById('manualLink').value.trim(); if (rawLink && !rawLink.startsWith('http')) rawLink = 'https://' + rawLink; const data = { betrag: parseFloat(document.getElementById('betrag').value), datum: document.getElementById('datum').value, beschreibung: document.getElementById('beschreibung').value, kategorieId: document.getElementById('categoryDropdown').value, fotoUrl: rawLink }; const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); id ? await col.doc(id).update(data) : await col.add(data); closeModal('addModal'); }
+        window.editExpense = id => { const e = expenses.find(x => x.id === id); document.getElementById('modalTitle').innerText = "Bearbeiten"; document.getElementById('editId').value = e.id; document.getElementById('betrag').value = e.betrag; document.getElementById('beschreibung').value = e.beschreibung; document.getElementById('datum').value = e.datum; document.getElementById('manualLink').value = e.fotoUrl || ''; document.getElementById('categoryDropdown').value = e.kategorieId; updateLinkButton(); document.getElementById('deleteBtn').classList.remove('hidden'); document.getElementById('addModal').classList.remove('hidden'); };
+        document.getElementById('addExpenseBtn').onclick = () => { document.getElementById('expenseForm').reset(); document.getElementById('editId').value = ''; document.getElementById('datum').value = new Date().toISOString().split('T')[0]; document.getElementById('deleteBtn').classList.add('hidden'); document.getElementById('addModal').classList.remove('hidden'); updateLinkButton(); };
+        function renderUI() { const list = document.getElementById('expenseList'); const search = document.getElementById('searchInput').value.toLowerCase(); currentFilteredExpenses = expenses.filter(e => (activeFilter === 'all' || e.kategorieId === activeFilter) && (activeYear === 'all' || e.datum.startsWith(activeYear)) && e.beschreibung.toLowerCase().includes(search)); let total = 0; list.innerHTML = currentFilteredExpenses.map(e => { const cat = categories.find(c => c.id === e.kategorieId); total += parseFloat(e.betrag); return `<div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-slate-50 cursor-pointer hover:shadow-md transition-shadow" onclick="editExpense('${e.id}')"><div><p class="font-black text-slate-900">${e.fotoUrl ? '<i class="fas fa-paperclip text-indigo-400 mr-2"></i>' : ''}${e.beschreibung}</p><p class="text-xs font-bold text-slate-500 mt-1">${formatToGermanDate(e.datum)} • ${cat?.name || 'Allgemein'}</p></div><p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p></div>`; }).join(''); document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'}); document.getElementById('totalCountBadge').innerText = `${currentFilteredExpenses.length} Einträge`; }
+        function openCurrentLink() { let l = document.getElementById('manualLink').value.trim(); if(l) { if (!l.startsWith('http')) l = 'https://' + l; window.open(l, '_blank'); } }
+        function updateLinkButton() { document.getElementById('openLinkBtn').classList.toggle('hidden', !document.getElementById('manualLink').value.trim()); }
+        document.getElementById('manualLink').oninput = updateLinkButton;
+        async function handleLogin() { try { await firebase.auth().signInWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); } catch(e) { showToast("Fehler"); } }
+        async function handleRegister() { try { const c = await firebase.auth().createUserWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); await db.collection('users').doc(c.user.uid).collection('categories').add({name: 'Allgemein'}); } catch(e) { showToast("Fehler"); } }
+        async function addCategory() { const n = document.getElementById('newCatName').value.trim(); if(n) await db.collection('users').doc(currentUser.uid).collection('categories').add({ name: n }); document.getElementById('newCatName').value = ''; }
+        async function deleteCategory(id) { if(confirm("Kategorie löschen?")) await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete(); }
+        function renderFilters() { document.getElementById('filterBar').innerHTML = `<button onclick="setFilter('all')" class="px-5 py-2.5 rounded-xl text-xs font-bold transition-colors ${activeFilter==='all'?'bg-slate-900 text-white':'bg-slate-100'}">Alle</button>` + categories.map(c => `<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${activeFilter===c.id?'bg-slate-900 text-white':'bg-slate-100'}">${c.name}</button>`).join(''); }
+        function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
+        function hideSplash() { const s=document.getElementById('splashScreen'); s.style.opacity='0'; setTimeout(()=>s.style.display='none',500); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function setFilter(id) { activeFilter = id; renderFilters(); renderUI(); }
+        function handleLogout() { firebase.auth().signOut().then(() => location.reload()); }
+        async function deleteCurrentEntry() { if(confirm("Löschen?")) { await db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete(); closeModal('addModal'); } }
     </script>
 </body>
 </html>
