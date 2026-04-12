@@ -20,6 +20,9 @@
         #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
         @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 40px; opacity: 1;} }
         @keyframes fadeout { from {bottom: 40px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+        
+        /* Verhindert, dass das Google Fenster auf mobilen Geräten abgeschnitten wird */
+        .picker-dialog { max-width: 100% !important; max-height: 100% !important; }
     </style>
 </head>
 <body class="min-h-screen font-sans text-slate-800">
@@ -115,9 +118,7 @@
                             <input type="url" id="manualLink" placeholder="https://..." class="w-full p-4 pl-12 bg-white rounded-2xl text-sm font-medium border border-slate-200 outline-none focus:border-indigo-500 transition-colors">
                             <i class="fas fa-link absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400"></i>
                         </div>
-                        
                         <button type="button" onclick="openDrivePicker()" class="w-12 h-14 bg-white border border-slate-200 text-blue-500 rounded-2xl flex items-center justify-center active:scale-90 transition-transform shadow-sm" title="Aus Google Drive wählen"><i class="fab fa-google-drive text-xl"></i></button>
-                        
                         <button type="button" onclick="pasteFromClipboard()" class="w-12 h-14 bg-white border border-slate-200 text-slate-500 rounded-2xl flex items-center justify-center active:scale-90 transition-transform shadow-sm" title="Einfügen"><i class="fas fa-paste"></i></button>
                         <button type="button" id="openLinkBtn" onclick="openCurrentLink()" class="hidden w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-transform"><i class="fas fa-external-link-alt"></i></button>
                     </div>
@@ -136,7 +137,7 @@
     </div>
 
     <script>
-        // === 1. DEINE FIREBASE DATEN (unverändert) ===
+        // === 1. FIREBASE KONFIGURATION ===
         const firebaseConfig = {
             apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
             authDomain: "meinbudgetcloud.firebaseapp.com",
@@ -146,74 +147,69 @@
             appId: "1:594713378906:web:7929f7a875159336101863"
         };
         
-        // === 2. DEINE GOOGLE DRIVE DATEN (HIER EINTRAGEN!) ===
+        // === 2. GOOGLE DRIVE KONFIGURATION ===
         const DRIVE_API_KEY = 'AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE';
         const DRIVE_CLIENT_ID = '594713378906-k8ivighcb2f02vemis1ngneu54418btp.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
         
-        let tokenClient;
-        let accessToken = null;
-        let pickerInited = false;
+        let db, currentUser, tokenClient, accessToken = null, pickerInited = false;
+        let expenses = [], categories = [], activeFilter = 'all', activeYear = 'all', currentFilteredExpenses = [];
 
-        // Drive API initialisieren
-        function gapiLoaded() { gapi.load('picker', () => pickerInited = true); }
-       function gisLoaded() { 
-    tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: DRIVE_CLIENT_ID, 
-        scope: SCOPES, 
-        ux_mode: 'popup',
-        callback: (response) => {
-            // NEU: Verhindert, dass die App abstürzt, wenn der User das Fenster schließt
-            if (response.error) { 
-                console.error("Google Auth Fehler:", response);
-                showToast("Anmeldung abgebrochen oder fehlgeschlagen.");
-                return; 
-            }
-            accessToken = response.access_token;
-            showPicker();
-        },
-    });
-}
+        // Google APIs laden
+        function gapiLoaded() { gapi.load('picker', () => { pickerInited = true; }); }
         
-        // Beide Skripte nach dem Laden aufrufen
+        function gisLoaded() { 
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: DRIVE_CLIENT_ID, 
+                scope: SCOPES, 
+                ux_mode: 'popup',
+                callback: (response) => {
+                    if (response.error) { showToast("Anmeldung fehlgeschlagen."); return; }
+                    accessToken = response.access_token;
+                    showPicker();
+                },
+            });
+        }
+        
         window.onload = function() {
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             db = firebase.firestore();
             firebase.auth().onAuthStateChanged(user => {
-                if (user) { currentUser = user; document.getElementById('authScreen').classList.add('hidden'); document.getElementById('mainApp').classList.remove('hidden'); startSync(); }
-                else { currentUser = null; document.getElementById('mainApp').classList.add('hidden'); document.getElementById('authScreen').classList.remove('hidden'); hideSplash(); }
+                if (user) { 
+                    currentUser = user; 
+                    document.getElementById('authScreen').classList.add('hidden'); 
+                    document.getElementById('mainApp').classList.remove('hidden'); 
+                    startSync(); 
+                } else { 
+                    currentUser = null; 
+                    document.getElementById('mainApp').classList.add('hidden'); 
+                    document.getElementById('authScreen').classList.remove('hidden'); 
+                    hideSplash(); 
+                }
             });
-            // Initialisiere Drive-Picker Skripte
             gapi.load('picker', {callback: gapiLoaded});
             gisLoaded();
         };
 
-        // --- DER GOOGLE DRIVE PICKER ---
-       function openDrivePicker() {
-    // NEU: Prüfen, ob Google wirklich fertig geladen ist
-    if (!pickerInited) {
-        showToast("Google lädt noch... Gleich nochmal versuchen!");
-        return;
-    }
-
-    if (!DRIVE_API_KEY.includes('HIER') && !DRIVE_CLIENT_ID.includes('HIER')) {
-        if (!accessToken) { 
-            tokenClient.requestAccessToken({prompt: 'consent'}); 
-        } else { 
-            showPicker(); 
+        // --- GOOGLE DRIVE PICKER FUNKTIONEN ---
+        function openDrivePicker() {
+            if (!pickerInited) { showToast("Google lädt noch..."); return; }
+            if (!accessToken) { tokenClient.requestAccessToken({prompt: 'consent'}); } 
+            else { showPicker(); }
         }
-    } else {
-        alert("Bitte erst API-Key und Client-ID im Code eintragen!");
-    }
-}
 
         function showPicker() {
+            const width = window.innerWidth * 0.95;
+            const height = window.innerHeight * 0.85;
             const view = new google.picker.DocsView(google.picker.ViewId.PDFS);
+            view.setMode(google.picker.DocsViewMode.LIST);
+            
             const picker = new google.picker.PickerBuilder()
                 .addView(view)
                 .setOAuthToken(accessToken)
                 .setDeveloperKey(DRIVE_API_KEY)
                 .setCallback(pickerCallback)
+                .setSize(width, height)
                 .build();
             picker.setVisible(true);
         }
@@ -221,62 +217,163 @@
         function pickerCallback(data) {
             if (data[google.picker.Response.ACTION] == google.picker.Action.PICKED) {
                 const doc = data[google.picker.Response.DOCUMENTS][0];
-                const url = doc[google.picker.Document.URL];
-                const name = doc[google.picker.Document.NAME];
-                
-                // Trage den Link ein
-                document.getElementById('manualLink').value = url;
+                document.getElementById('manualLink').value = doc[google.picker.Document.URL];
                 updateLinkButton();
-                
-                // Trage den Dateinamen als Beschreibung ein (falls Feld leer ist)
                 const descField = document.getElementById('beschreibung');
-                if(!descField.value) { descField.value = name.replace('.pdf', ''); }
-                
-                showToast("Aus Drive importiert!");
+                if(!descField.value) descField.value = doc[google.picker.Document.NAME].replace('.pdf', '');
+                showToast("Beleg verknüpft!");
             }
-       // In der speichern() Funktion, nachdem der Eintrag erfolgreich war:
-window.scrollTo({
-    top: 0, 
-    behavior: 'smooth' // Das sorgt für ein sanftes Gleiten statt einem harten Sprung
-});
         }
-        // --- RESTLICHE APP-FUNKTIONEN (unverändert) ---
-        let db, currentUser, expenses = [], categories = [], activeFilter = 'all', activeYear = 'all', currentFilteredExpenses = [];
-        
+
+        // --- CORE APP LOGIK ---
         function startSync() {
             const userRef = db.collection('users').doc(currentUser.uid);
-            userRef.collection('categories').onSnapshot(snap => { categories = snap.docs.map(d => ({id: d.id, ...d.data()})); categories.sort((a,b) => a.name.localeCompare(b.name)); renderFilters(); renderCategoryDropdown(); renderManageCatsList(); });
-            userRef.collection('ausgaben').onSnapshot(snap => { expenses = snap.docs.map(d => ({id: d.id, ...d.data()})); expenses.sort((a,b) => new Date(b.datum) - new Date(a.datum)); updateYearDropdown(); renderUI(); hideSplash(); });
+            userRef.collection('categories').onSnapshot(snap => { 
+                categories = snap.docs.map(d => ({id: d.id, ...d.data()})); 
+                categories.sort((a,b) => a.name.localeCompare(b.name)); 
+                renderFilters(); renderCategoryDropdown(); renderManageCatsList(); 
+            });
+            userRef.collection('ausgaben').onSnapshot(snap => { 
+                expenses = snap.docs.map(d => ({id: d.id, ...d.data()})); 
+                expenses.sort((a,b) => new Date(b.datum) - new Date(a.datum)); 
+                updateYearDropdown(); renderUI(); hideSplash(); 
+            });
         }
-        async function editCategory(id, currentName) { const newName = prompt("Kategorie umbenennen:", currentName); if (newName && newName.trim() !== "" && newName !== currentName) { await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({ name: newName.trim() }); showToast("Umbenannt!"); } }
-        function renderCategoryDropdown() { document.getElementById('categoryDropdown').innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join(''); }
-        function renderManageCatsList() { document.getElementById('manageCatsList').innerHTML = categories.map(c => `<div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl"><span class="font-bold text-sm text-slate-700">${c.name}</span><div class="flex gap-3"><button onclick="editCategory('${c.id}', '${c.name}')" class="text-indigo-500 p-2"><i class="fas fa-pen"></i></button><button onclick="deleteCategory('${c.id}')" class="text-rose-500 p-2"><i class="fas fa-trash"></i></button></div></div>`).join(''); }
-        async function pasteFromClipboard() { try { const text = await navigator.clipboard.readText(); document.getElementById('manualLink').value = text; updateLinkButton(); showToast("Eingefügt!"); } catch (err) { showToast("Bitte Strg+V nutzen"); } }
-        function updateYearDropdown() { const years = [...new Set(expenses.map(e => e.datum.substring(0,4)))].sort((a,b) => b-a); const select = document.getElementById('yearFilter'); const currentVal = select.value; select.innerHTML = `<option value="all">Alle Jahre</option>` + years.map(y => `<option value="${y}">${y}</option>`).join(''); select.value = years.includes(currentVal) ? currentVal : 'all'; activeYear = select.value; }
-        function setYearFilter(y) { activeYear = y; renderUI(); }
-        function exportToExcel() { if (currentFilteredExpenses.length === 0) { showToast("Keine Daten zum Exportieren!"); return; } const dataToExport = currentFilteredExpenses.map(e => { const kat = categories.find(c => c.id === e.kategorieId); return { Datum: formatToGermanDate(e.datum), Beschreibung: e.beschreibung, Kategorie: kat ? kat.name : 'Allgemein', 'Betrag (€)': parseFloat(e.betrag).toFixed(2).replace('.', ','), Beleg_Link: e.fotoUrl || '' }; }); const worksheet = XLSX.utils.json_to_sheet(dataToExport); const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, worksheet, "Ausgaben"); XLSX.writeFile(workbook, "Budget_Cloud_Export.xlsx"); showToast("Export gestartet!"); closeModal('dataModal'); }
-        function parseToIsoDate(germanStr) { if (!germanStr) return new Date().toISOString().split('T')[0]; const str = String(germanStr).trim(); if (str.includes('-')) return str; const parts = str.split('.'); if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`; return new Date().toISOString().split('T')[0]; }
-        function handleImport(input) { const file = input.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (e) => { const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, { type: 'array' }); const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]); const expensesCol = db.collection('users').doc(currentUser.uid).collection('ausgaben'); const categoriesCol = db.collection('users').doc(currentUser.uid).collection('categories'); showToast("Importiere..."); for (const row of json) { const datum = parseToIsoDate(row.Datum || ''); const beschreibung = row.Beschreibung || 'Import'; const betrag = parseFloat(String(row['Betrag (€)'] || 0).replace(',', '.')); if (!expenses.some(exp => exp.datum === datum && exp.beschreibung === beschreibung && parseFloat(exp.betrag) === betrag)) { const katName = row.Kategorie || 'Allgemein'; let kat = categories.find(c => c.name.toLowerCase() === katName.toLowerCase()); let targetId = kat ? kat.id : (await categoriesCol.add({name: katName})).id; await expensesCol.add({ datum, beschreibung, betrag, kategorieId: targetId, fotoUrl: row.Beleg_Link || '' }); } } showToast("Import fertig!"); closeModal('dataModal'); input.value = ''; }; reader.readAsArrayBuffer(file); }
-        async function deleteAllData() { if (expenses.length === 0) return; if (confirm("Wirklich ALLES löschen?")) { const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); await Promise.all(expenses.map(exp => col.doc(exp.id).delete())); showToast("Gelöscht!"); closeModal('dataModal'); } }
-        function formatToGermanDate(isoStr) { if (!isoStr) return ''; const parts = isoStr.split('-'); return parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : isoStr; }
-        async function handleFormSubmit(e) { e.preventDefault(); const id = document.getElementById('editId').value; let rawLink = document.getElementById('manualLink').value.trim(); if (rawLink && !rawLink.startsWith('http')) rawLink = 'https://' + rawLink; const data = { betrag: parseFloat(document.getElementById('betrag').value), datum: document.getElementById('datum').value, beschreibung: document.getElementById('beschreibung').value, kategorieId: document.getElementById('categoryDropdown').value, fotoUrl: rawLink }; const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); id ? await col.doc(id).update(data) : await col.add(data); closeModal('addModal'); }
-        window.editExpense = id => { const e = expenses.find(x => x.id === id); document.getElementById('modalTitle').innerText = "Bearbeiten"; document.getElementById('editId').value = e.id; document.getElementById('betrag').value = e.betrag; document.getElementById('beschreibung').value = e.beschreibung; document.getElementById('datum').value = e.datum; document.getElementById('manualLink').value = e.fotoUrl || ''; document.getElementById('categoryDropdown').value = e.kategorieId; updateLinkButton(); document.getElementById('deleteBtn').classList.remove('hidden'); document.getElementById('addModal').classList.remove('hidden'); };
-        document.getElementById('addExpenseBtn').onclick = () => { document.getElementById('expenseForm').reset(); document.getElementById('editId').value = ''; document.getElementById('datum').value = new Date().toISOString().split('T')[0]; document.getElementById('deleteBtn').classList.add('hidden'); document.getElementById('addModal').classList.remove('hidden'); updateLinkButton(); };
-        function renderUI() { const list = document.getElementById('expenseList'); const search = document.getElementById('searchInput').value.toLowerCase(); currentFilteredExpenses = expenses.filter(e => (activeFilter === 'all' || e.kategorieId === activeFilter) && (activeYear === 'all' || e.datum.startsWith(activeYear)) && e.beschreibung.toLowerCase().includes(search)); let total = 0; list.innerHTML = currentFilteredExpenses.map(e => { const cat = categories.find(c => c.id === e.kategorieId); total += parseFloat(e.betrag); return `<div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-slate-50 cursor-pointer hover:shadow-md transition-shadow" onclick="editExpense('${e.id}')"><div><p class="font-black text-slate-900">${e.fotoUrl ? '<i class="fas fa-paperclip text-indigo-400 mr-2"></i>' : ''}${e.beschreibung}</p><p class="text-xs font-bold text-slate-500 mt-1">${formatToGermanDate(e.datum)} • ${cat?.name || 'Allgemein'}</p></div><p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p></div>`; }).join(''); document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'}); document.getElementById('totalCountBadge').innerText = `${currentFilteredExpenses.length} Einträge`; }
-        function openCurrentLink() { let l = document.getElementById('manualLink').value.trim(); if(l) { if (!l.startsWith('http')) l = 'https://' + l; window.open(l, '_blank'); } }
-        function updateLinkButton() { document.getElementById('openLinkBtn').classList.toggle('hidden', !document.getElementById('manualLink').value.trim()); }
-        document.getElementById('manualLink').oninput = updateLinkButton;
-        async function handleLogin() { try { await firebase.auth().signInWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); } catch(e) { showToast("Fehler"); } }
-        async function handleRegister() { try { const c = await firebase.auth().createUserWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); await db.collection('users').doc(c.user.uid).collection('categories').add({name: 'Allgemein'}); } catch(e) { showToast("Fehler"); } }
-        async function addCategory() { const n = document.getElementById('newCatName').value.trim(); if(n) await db.collection('users').doc(currentUser.uid).collection('categories').add({ name: n }); document.getElementById('newCatName').value = ''; }
-        async function deleteCategory(id) { if(confirm("Kategorie löschen?")) await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete(); }
-        function renderFilters() { document.getElementById('filterBar').innerHTML = `<button onclick="setFilter('all')" class="px-5 py-2.5 rounded-xl text-xs font-bold transition-colors ${activeFilter==='all'?'bg-slate-900 text-white':'bg-slate-100'}">Alle</button>` + categories.map(c => `<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${activeFilter===c.id?'bg-slate-900 text-white':'bg-slate-100'}">${c.name}</button>`).join(''); }
+
+        function renderUI() {
+            const list = document.getElementById('expenseList');
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            currentFilteredExpenses = expenses.filter(e => 
+                (activeFilter === 'all' || e.kategorieId === activeFilter) && 
+                (activeYear === 'all' || e.datum.startsWith(activeYear)) && 
+                e.beschreibung.toLowerCase().includes(search)
+            );
+
+            let total = 0;
+            list.innerHTML = currentFilteredExpenses.map(e => {
+                const cat = categories.find(c => c.id === e.kategorieId);
+                total += parseFloat(e.betrag);
+                
+                // Klickbare Büroklammer Logik
+                const clipBtn = e.fotoUrl ? `
+                    <a href="${e.fotoUrl}" target="_blank" onclick="event.stopPropagation()" 
+                       class="inline-flex items-center justify-center w-9 h-9 bg-indigo-50 text-indigo-600 rounded-full mr-3 shadow-sm active:scale-90 transition-all">
+                       <i class="fas fa-paperclip"></i>
+                    </a>` : '';
+
+                return `
+                    <div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-slate-50 cursor-pointer hover:shadow-md transition-shadow" onclick="editExpense('${e.id}')">
+                        <div class="flex items-center">
+                            ${clipBtn}
+                            <div>
+                                <p class="font-black text-slate-900">${e.beschreibung}</p>
+                                <p class="text-xs font-bold text-slate-500 mt-1">${formatToGermanDate(e.datum)} • ${cat?.name || 'Allgemein'}</p>
+                            </div>
+                        </div>
+                        <p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p>
+                    </div>`;
+            }).join('');
+            document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
+            document.getElementById('totalCountBadge').innerText = `${currentFilteredExpenses.length} Einträge`;
+        }
+
+        async function handleFormSubmit(e) { 
+            e.preventDefault(); 
+            const id = document.getElementById('editId').value; 
+            let rawLink = document.getElementById('manualLink').value.trim(); 
+            if (rawLink && !rawLink.startsWith('http')) rawLink = 'https://' + rawLink; 
+            const data = { 
+                betrag: parseFloat(document.getElementById('betrag').value), 
+                datum: document.getElementById('datum').value, 
+                beschreibung: document.getElementById('beschreibung').value, 
+                kategorieId: document.getElementById('categoryDropdown').value, 
+                fotoUrl: rawLink 
+            }; 
+            const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); 
+            id ? await col.doc(id).update(data) : await col.add(data); 
+            closeModal('addModal');
+            // Auto-Scroll nach oben
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // --- HELFER FUNKTIONEN ---
+        function formatToGermanDate(isoStr) { if (!isoStr) return ''; const p = isoStr.split('-'); return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : isoStr; }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
         function hideSplash() { const s=document.getElementById('splashScreen'); s.style.opacity='0'; setTimeout(()=>s.style.display='none',500); }
         function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-        function setFilter(id) { activeFilter = id; renderFilters(); renderUI(); }
+        function updateLinkButton() { document.getElementById('openLinkBtn').classList.toggle('hidden', !document.getElementById('manualLink').value.trim()); }
+        function openCurrentLink() { let l = document.getElementById('manualLink').value.trim(); if(l) window.open(l.startsWith('http') ? l : 'https://'+l, '_blank'); }
+        document.getElementById('manualLink').oninput = updateLinkButton;
+        
+        async function handleLogin() { try { await firebase.auth().signInWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); } catch(e) { showToast("Login fehlgeschlagen"); } }
+        async function handleRegister() { try { const c = await firebase.auth().createUserWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); await db.collection('users').doc(c.user.uid).collection('categories').add({name: 'Allgemein'}); } catch(e) { showToast("Registrierung fehlgeschlagen"); } }
         function handleLogout() { firebase.auth().signOut().then(() => location.reload()); }
-        async function deleteCurrentEntry() { if(confirm("Löschen?")) { await db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete(); closeModal('addModal'); } }
+        
+        window.editExpense = id => { 
+            const e = expenses.find(x => x.id === id); 
+            document.getElementById('modalTitle').innerText = "Bearbeiten"; 
+            document.getElementById('editId').value = e.id; 
+            document.getElementById('betrag').value = e.betrag; 
+            document.getElementById('beschreibung').value = e.beschreibung; 
+            document.getElementById('datum').value = e.datum; 
+            document.getElementById('manualLink').value = e.fotoUrl || ''; 
+            document.getElementById('categoryDropdown').value = e.kategorieId; 
+            updateLinkButton(); document.getElementById('deleteBtn').classList.remove('hidden'); 
+            document.getElementById('addModal').classList.remove('hidden'); 
+        };
+        
+        document.getElementById('addExpenseBtn').onclick = () => { 
+            document.getElementById('expenseForm').reset(); 
+            document.getElementById('editId').value = ''; 
+            document.getElementById('datum').value = new Date().toISOString().split('T')[0]; 
+            document.getElementById('deleteBtn').classList.add('hidden'); 
+            document.getElementById('addModal').classList.remove('hidden'); 
+            updateLinkButton(); 
+        };
+
+        // Kategorie-Dropdown & Filter
+        function renderCategoryDropdown() { document.getElementById('categoryDropdown').innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join(''); }
+        function renderFilters() { document.getElementById('filterBar').innerHTML = `<button onclick="setFilter('all')" class="px-5 py-2.5 rounded-xl text-xs font-bold transition-colors ${activeFilter==='all'?'bg-slate-900 text-white':'bg-slate-100'}">Alle</button>` + categories.map(c => `<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${activeFilter===c.id?'bg-slate-900 text-white':'bg-slate-100'}">${c.name}</button>`).join(''); }
+        function setFilter(id) { activeFilter = id; renderFilters(); renderUI(); }
+        function setYearFilter(y) { activeYear = y; renderUI(); }
+        function updateYearDropdown() { 
+            const years = [...new Set(expenses.map(e => e.datum.substring(0,4)))].sort((a,b) => b-a); 
+            const s = document.getElementById('yearFilter'); 
+            const cur = s.value; 
+            s.innerHTML = `<option value="all">Alle Jahre</option>` + years.map(y => `<option value="${y}">${y}</option>`).join(''); 
+            s.value = years.includes(cur) ? cur : 'all'; activeYear = s.value; 
+        }
+
+        // Sonstige Funktionen (Kategorien, Export, Import, Clipboard)
+        async function addCategory() { const n = document.getElementById('newCatName').value.trim(); if(n) await db.collection('users').doc(currentUser.uid).collection('categories').add({ name: n }); document.getElementById('newCatName').value = ''; }
+        async function editCategory(id, currentName) { const newName = prompt("Kategorie umbenennen:", currentName); if (newName && newName.trim() !== "" && newName !== currentName) { await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({ name: newName.trim() }); showToast("Umbenannt!"); } }
+        async function deleteCategory(id) { if(confirm("Kategorie löschen?")) await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete(); }
+        function renderManageCatsList() { document.getElementById('manageCatsList').innerHTML = categories.map(c => `<div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl"><span class="font-bold text-sm text-slate-700">${c.name}</span><div class="flex gap-3"><button onclick="editCategory('${c.id}', '${c.name}')" class="text-indigo-500 p-2"><i class="fas fa-pen"></i></button><button onclick="deleteCategory('${c.id}')" class="text-rose-500 p-2"><i class="fas fa-trash"></i></button></div></div>`).join(''); }
+        async function pasteFromClipboard() { try { const text = await navigator.clipboard.readText(); document.getElementById('manualLink').value = text; updateLinkButton(); showToast("Eingefügt!"); } catch (err) { showToast("Clipboard Fehler"); } }
+        async function deleteCurrentEntry() { if(confirm("Eintrag löschen?")) { await db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete(); closeModal('addModal'); } }
+        async function deleteAllData() { if (expenses.length === 0) return; if (confirm("Wirklich alles löschen?")) { const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); await Promise.all(expenses.map(exp => col.doc(exp.id).delete())); showToast("Daten gelöscht"); closeModal('dataModal'); } }
+        
+        function exportToExcel() { 
+            if (currentFilteredExpenses.length === 0) return; 
+            const data = currentFilteredExpenses.map(e => ({ Datum: formatToGermanDate(e.datum), Beschreibung: e.beschreibung, Kategorie: (categories.find(c => c.id === e.kategorieId))?.name || 'Allgemein', 'Betrag (€)': parseFloat(e.betrag).toFixed(2).replace('.', ','), Link: e.fotoUrl || '' })); 
+            const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Budget"); XLSX.writeFile(wb, "Budget_Cloud.xlsx"); 
+        }
+        
+        function handleImport(input) { 
+            const reader = new FileReader(); 
+            reader.onload = async (e) => { 
+                const data = new Uint8Array(e.target.result); 
+                const wb = XLSX.read(data, { type: 'array' }); 
+                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); 
+                const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); 
+                for (const row of json) {
+                    const betrag = parseFloat(String(row['Betrag (€)'] || 0).replace(',', '.'));
+                    await col.add({ datum: new Date().toISOString().split('T')[0], beschreibung: row.Beschreibung || 'Import', betrag: betrag, kategorieId: categories[0]?.id || '', fotoUrl: row.Link || '' });
+                }
+                showToast("Import fertig"); closeModal('dataModal');
+            }; 
+            reader.readAsArrayBuffer(input.files[0]); 
+        }
     </script>
 </body>
 </html>
