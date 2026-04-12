@@ -234,8 +234,12 @@
                 
                 showToast("Aus Drive importiert!");
             }
+       // In der speichern() Funktion, nachdem der Eintrag erfolgreich war:
+window.scrollTo({
+    top: 0, 
+    behavior: 'smooth' // Das sorgt für ein sanftes Gleiten statt einem harten Sprung
+});
         }
-
         // --- RESTLICHE APP-FUNKTIONEN (unverändert) ---
         let db, currentUser, expenses = [], categories = [], activeFilter = 'all', activeYear = 'all', currentFilteredExpenses = [];
         
