@@ -360,19 +360,73 @@
         }
         
         function handleImport(input) { 
-            const reader = new FileReader(); 
-            reader.onload = async (e) => { 
-                const data = new Uint8Array(e.target.result); 
-                const wb = XLSX.read(data, { type: 'array' }); 
-                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); 
-                const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); 
-                for (const row of json) {
-                    const betrag = parseFloat(String(row['Betrag (€)'] || 0).replace(',', '.'));
-                    await col.add({ datum: new Date().toISOString().split('T')[0], beschreibung: row.Beschreibung || 'Import', betrag: betrag, kategorieId: categories[0]?.id || '', fotoUrl: row.Link || '' });
-                }
-                showToast("Import fertig"); closeModal('dataModal');
-            }; 
-            reader.readAsArrayBuffer(input.files[0]); 
+    if (!input.files[0]) return;
+    const reader = new FileReader(); 
+    
+    reader.onload = async (e) => { 
+        const data = new Uint8Array(e.target.result); 
+        const wb = XLSX.read(data, { type: 'array' }); 
+        const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); 
+        
+        const userRef = db.collection('users').doc(currentUser.uid);
+        const col = userRef.collection('ausgaben'); 
+        const catCol = userRef.collection('categories');
+        
+        let skippedCount = 0;
+        let addedCount = 0;
+
+        showToast("Import & Kategorisierung läuft...");
+
+        for (const row of json) {
+            const datum = parseToIsoDate(row.Datum) || new Date().toISOString().split('T')[0];
+            const beschreibung = row.Beschreibung || 'Import';
+            const betrag = parseFloat(String(row['Betrag (€)'] || 0).replace(',', '.'));
+            const link = row.Link || '';
+            const excelKatName = (row.Kategorie || 'Allgemein').trim();
+
+            // 1. DUPLIKATS-CHECK
+            const isDuplicate = expenses.some(exp => 
+                exp.datum === datum && 
+                exp.beschreibung === beschreibung && 
+                Math.abs(parseFloat(exp.betrag) - betrag) < 0.01
+            );
+
+            if (isDuplicate) {
+                skippedCount++;
+                continue;
+            }
+
+            // 2. KATEGORIE-MATCHING
+            // Wir suchen, ob die Kategorie aus der Excel schon in deiner Liste existiert
+            let kat = categories.find(c => c.name.toLowerCase() === excelKatName.toLowerCase());
+            let targetKatId;
+
+            if (kat) {
+                targetKatId = kat.id;
+            } else {
+                // Wenn Kategorie neu ist: In Firebase anlegen
+                const newCatRef = await catCol.add({ name: excelKatName });
+                targetKatId = newCatRef.id;
+                // Kurz warten/lokal pushen ist nicht nötig, da Firestore onSnapshot die Liste aktualisiert
+            }
+
+            // 3. EINTRAG SPEICHERN
+            await col.add({ 
+                datum: datum, 
+                beschreibung: beschreibung, 
+                betrag: betrag, 
+                kategorieId: targetKatId, 
+                fotoUrl: link 
+            });
+            addedCount++;
+        }
+        
+        showToast(`Fertig! ${addedCount} neu, ${skippedCount} Duplikate ignoriert.`); 
+        closeModal('dataModal');
+        input.value = ''; 
+    }; 
+    reader.readAsArrayBuffer(input.files[0]); 
+}
         }
     </script>
 </body>
