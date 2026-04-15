@@ -20,9 +20,6 @@
         #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
         @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 40px; opacity: 1;} }
         @keyframes fadeout { from {bottom: 40px; opacity: 1;} to {bottom: 0; opacity: 0;} }
-        
-        /* Verhindert, dass das Google Fenster auf mobilen Geräten abgeschnitten wird */
-        .picker-dialog { max-width: 100% !important; max-height: 100% !important; }
     </style>
 </head>
 <body class="min-h-screen font-sans text-slate-800">
@@ -137,7 +134,6 @@
     </div>
 
     <script>
-        // === 1. FIREBASE KONFIGURATION ===
         const firebaseConfig = {
             apiKey: "AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE",
             authDomain: "meinbudgetcloud.firebaseapp.com",
@@ -147,7 +143,6 @@
             appId: "1:594713378906:web:7929f7a875159336101863"
         };
         
-        // === 2. GOOGLE DRIVE KONFIGURATION ===
         const DRIVE_API_KEY = 'AIzaSyD1zzt4pZzyNxMDWpc5MG2aPRecHKQG7IE';
         const DRIVE_CLIENT_ID = '594713378906-k8ivighcb2f02vemis1ngneu54418btp.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
@@ -155,19 +150,11 @@
         let db, currentUser, tokenClient, accessToken = null, pickerInited = false;
         let expenses = [], categories = [], activeFilter = 'all', activeYear = 'all', currentFilteredExpenses = [];
 
-        // Google APIs laden
         function gapiLoaded() { gapi.load('picker', () => { pickerInited = true; }); }
-        
         function gisLoaded() { 
             tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: DRIVE_CLIENT_ID, 
-                scope: SCOPES, 
-                ux_mode: 'popup',
-                callback: (response) => {
-                    if (response.error) { showToast("Anmeldung fehlgeschlagen."); return; }
-                    accessToken = response.access_token;
-                    showPicker();
-                },
+                client_id: DRIVE_CLIENT_ID, scope: SCOPES, ux_mode: 'popup',
+                callback: (resp) => { if(!resp.error) { accessToken = resp.access_token; showPicker(); } }
             });
         }
         
@@ -175,42 +162,24 @@
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             db = firebase.firestore();
             firebase.auth().onAuthStateChanged(user => {
-                if (user) { 
-                    currentUser = user; 
-                    document.getElementById('authScreen').classList.add('hidden'); 
-                    document.getElementById('mainApp').classList.remove('hidden'); 
-                    startSync(); 
-                } else { 
-                    currentUser = null; 
-                    document.getElementById('mainApp').classList.add('hidden'); 
-                    document.getElementById('authScreen').classList.remove('hidden'); 
-                    hideSplash(); 
-                }
+                if (user) { currentUser = user; document.getElementById('authScreen').classList.add('hidden'); document.getElementById('mainApp').classList.remove('hidden'); startSync(); }
+                else { currentUser = null; document.getElementById('mainApp').classList.add('hidden'); document.getElementById('authScreen').classList.remove('hidden'); hideSplash(); }
             });
             gapi.load('picker', {callback: gapiLoaded});
             gisLoaded();
         };
 
-        // --- GOOGLE DRIVE PICKER FUNKTIONEN ---
         function openDrivePicker() {
-            if (!pickerInited) { showToast("Google lädt noch..."); return; }
-            if (!accessToken) { tokenClient.requestAccessToken({prompt: 'consent'}); } 
-            else { showPicker(); }
+            if (!pickerInited) return;
+            if (!accessToken) tokenClient.requestAccessToken({prompt: 'consent'}); else showPicker();
         }
 
         function showPicker() {
-            const width = window.innerWidth * 0.95;
-            const height = window.innerHeight * 0.85;
             const view = new google.picker.DocsView(google.picker.ViewId.PDFS);
             view.setMode(google.picker.DocsViewMode.LIST);
-            
             const picker = new google.picker.PickerBuilder()
-                .addView(view)
-                .setOAuthToken(accessToken)
-                .setDeveloperKey(DRIVE_API_KEY)
-                .setCallback(pickerCallback)
-                .setSize(width, height)
-                .build();
+                .addView(view).setOAuthToken(accessToken).setDeveloperKey(DRIVE_API_KEY)
+                .setCallback(pickerCallback).setSize(window.innerWidth*0.95, window.innerHeight*0.85).build();
             picker.setVisible(true);
         }
 
@@ -219,13 +188,10 @@
                 const doc = data[google.picker.Response.DOCUMENTS][0];
                 document.getElementById('manualLink').value = doc[google.picker.Document.URL];
                 updateLinkButton();
-                const descField = document.getElementById('beschreibung');
-                if(!descField.value) descField.value = doc[google.picker.Document.NAME].replace('.pdf', '');
-                showToast("Beleg verknüpft!");
+                if(!document.getElementById('beschreibung').value) document.getElementById('beschreibung').value = doc[google.picker.Document.NAME].replace('.pdf', '');
             }
         }
 
-        // --- CORE APP LOGIK ---
         function startSync() {
             const userRef = db.collection('users').doc(currentUser.uid);
             userRef.collection('categories').onSnapshot(snap => { 
@@ -248,55 +214,69 @@
                 (activeYear === 'all' || e.datum.startsWith(activeYear)) && 
                 e.beschreibung.toLowerCase().includes(search)
             );
-
             let total = 0;
             list.innerHTML = currentFilteredExpenses.map(e => {
                 const cat = categories.find(c => c.id === e.kategorieId);
                 total += parseFloat(e.betrag);
-                
-                // Klickbare Büroklammer Logik
-                const clipBtn = e.fotoUrl ? `
-                    <a href="${e.fotoUrl}" target="_blank" onclick="event.stopPropagation()" 
-                       class="inline-flex items-center justify-center w-9 h-9 bg-indigo-50 text-indigo-600 rounded-full mr-3 shadow-sm active:scale-90 transition-all">
-                       <i class="fas fa-paperclip"></i>
-                    </a>` : '';
-
-                return `
-                    <div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-slate-50 cursor-pointer hover:shadow-md transition-shadow" onclick="editExpense('${e.id}')">
-                        <div class="flex items-center">
-                            ${clipBtn}
-                            <div>
-                                <p class="font-black text-slate-900">${e.beschreibung}</p>
-                                <p class="text-xs font-bold text-slate-500 mt-1">${formatToGermanDate(e.datum)} • ${cat?.name || 'Allgemein'}</p>
-                            </div>
-                        </div>
-                        <p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p>
-                    </div>`;
+                const clip = e.fotoUrl ? `<a href="${e.fotoUrl}" target="_blank" onclick="event.stopPropagation()" class="inline-flex items-center justify-center w-9 h-9 bg-indigo-50 text-indigo-600 rounded-full mr-3 shadow-sm active:scale-90 transition-all"><i class="fas fa-paperclip"></i></a>` : '';
+                return `<div class="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-slate-50 cursor-pointer hover:shadow-md transition-shadow" onclick="editExpense('${e.id}')"><div class="flex items-center">${clip}<div><p class="font-black text-slate-900">${e.beschreibung}</p><p class="text-xs font-bold text-slate-500 mt-1">${formatToGermanDate(e.datum)} • ${cat?.name || 'Allgemein'}</p></div></div><p class="font-black text-slate-900 text-lg">-${parseFloat(e.betrag).toFixed(2).replace('.', ',')} €</p></div>`;
             }).join('');
             document.getElementById('totalAmount').innerText = total.toLocaleString('de-DE', {style:'currency', currency:'EUR'});
             document.getElementById('totalCountBadge').innerText = `${currentFilteredExpenses.length} Einträge`;
         }
 
-        async function handleFormSubmit(e) { 
-            e.preventDefault(); 
-            const id = document.getElementById('editId').value; 
-            let rawLink = document.getElementById('manualLink').value.trim(); 
-            if (rawLink && !rawLink.startsWith('http')) rawLink = 'https://' + rawLink; 
-            const data = { 
-                betrag: parseFloat(document.getElementById('betrag').value), 
-                datum: document.getElementById('datum').value, 
-                beschreibung: document.getElementById('beschreibung').value, 
-                kategorieId: document.getElementById('categoryDropdown').value, 
-                fotoUrl: rawLink 
-            }; 
-            const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); 
-            id ? await col.doc(id).update(data) : await col.add(data); 
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+            const id = document.getElementById('editId').value;
+            let link = document.getElementById('manualLink').value.trim();
+            if(link && !link.startsWith('http')) link = 'https://' + link;
+            const data = { betrag: parseFloat(document.getElementById('betrag').value), datum: document.getElementById('datum').value, beschreibung: document.getElementById('beschreibung').value, kategorieId: document.getElementById('categoryDropdown').value, fotoUrl: link };
+            const col = db.collection('users').doc(currentUser.uid).collection('ausgaben');
+            id ? await col.doc(id).update(data) : await col.add(data);
             closeModal('addModal');
-            // Auto-Scroll nach oben
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // --- HELFER FUNKTIONEN ---
+        function parseToIsoDate(germanStr) { 
+            if (!germanStr) return new Date().toISOString().split('T')[0]; 
+            const str = String(germanStr).trim(); 
+            if (str.includes('-')) return str; 
+            const parts = str.split('.'); 
+            if (parts.length === 3) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`; 
+            return new Date().toISOString().split('T')[0]; 
+        }
+
+        async function handleImport(input) {
+            if (!input.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const data = new Uint8Array(e.target.result);
+                const wb = XLSX.read(data, { type: 'array' });
+                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+                const userRef = db.collection('users').doc(currentUser.uid);
+                const col = userRef.collection('ausgaben');
+                const catCol = userRef.collection('categories');
+                let added = 0, skipped = 0;
+                showToast("Import läuft...");
+                for (const row of json) {
+                    const datum = parseToIsoDate(row.Datum);
+                    const beschreibung = row.Beschreibung || 'Import';
+                    const betrag = parseFloat(String(row['Betrag (€)'] || 0).replace(',', '.'));
+                    const isDup = expenses.some(exp => exp.datum === datum && exp.beschreibung === beschreibung && Math.abs(parseFloat(exp.betrag) - betrag) < 0.01);
+                    if (isDup) { skipped++; continue; }
+                    const catName = (row.Kategorie || 'Allgemein').trim();
+                    let kat = categories.find(c => c.name.toLowerCase() === catName.toLowerCase());
+                    let katId = kat ? kat.id : (await catCol.add({name: catName})).id;
+                    await col.add({ datum, beschreibung, betrag, kategorieId: katId, fotoUrl: row.Link || '' });
+                    added++;
+                }
+                showToast(`Fertig! ${added} neu, ${skipped} Duplikate ignoriert.`);
+                closeModal('dataModal');
+                input.value = '';
+            };
+            reader.readAsArrayBuffer(input.files[0]);
+        }
+
         function formatToGermanDate(isoStr) { if (!isoStr) return ''; const p = isoStr.split('-'); return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : isoStr; }
         function showToast(m) { const t=document.getElementById('toast'); t.innerText=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
         function hideSplash() { const s=document.getElementById('splashScreen'); s.style.opacity='0'; setTimeout(()=>s.style.display='none',500); }
@@ -304,129 +284,39 @@
         function updateLinkButton() { document.getElementById('openLinkBtn').classList.toggle('hidden', !document.getElementById('manualLink').value.trim()); }
         function openCurrentLink() { let l = document.getElementById('manualLink').value.trim(); if(l) window.open(l.startsWith('http') ? l : 'https://'+l, '_blank'); }
         document.getElementById('manualLink').oninput = updateLinkButton;
-        
         async function handleLogin() { try { await firebase.auth().signInWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); } catch(e) { showToast("Login fehlgeschlagen"); } }
-        async function handleRegister() { try { const c = await firebase.auth().createUserWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); await db.collection('users').doc(c.user.uid).collection('categories').add({name: 'Allgemein'}); } catch(e) { showToast("Registrierung fehlgeschlagen"); } }
+        async function handleRegister() { try { const c = await firebase.auth().createUserWithEmailAndPassword(document.getElementById('authEmail').value, document.getElementById('authPassword').value); await db.collection('users').doc(c.user.uid).collection('categories').add({name: 'Allgemein'}); } catch(e) { showToast("Fehler"); } }
         function handleLogout() { firebase.auth().signOut().then(() => location.reload()); }
-        
         window.editExpense = id => { 
             const e = expenses.find(x => x.id === id); 
             document.getElementById('modalTitle').innerText = "Bearbeiten"; 
-            document.getElementById('editId').value = e.id; 
-            document.getElementById('betrag').value = e.betrag; 
-            document.getElementById('beschreibung').value = e.beschreibung; 
-            document.getElementById('datum').value = e.datum; 
-            document.getElementById('manualLink').value = e.fotoUrl || ''; 
-            document.getElementById('categoryDropdown').value = e.kategorieId; 
-            updateLinkButton(); document.getElementById('deleteBtn').classList.remove('hidden'); 
-            document.getElementById('addModal').classList.remove('hidden'); 
+            document.getElementById('editId').value = e.id; document.getElementById('betrag').value = e.betrag; 
+            document.getElementById('beschreibung').value = e.beschreibung; document.getElementById('datum').value = e.datum; 
+            document.getElementById('manualLink').value = e.fotoUrl || ''; document.getElementById('categoryDropdown').value = e.kategorieId; 
+            updateLinkButton(); document.getElementById('deleteBtn').classList.remove('hidden'); document.getElementById('addModal').classList.remove('hidden'); 
         };
-        
-        document.getElementById('addExpenseBtn').onclick = () => { 
-            document.getElementById('expenseForm').reset(); 
-            document.getElementById('editId').value = ''; 
-            document.getElementById('datum').value = new Date().toISOString().split('T')[0]; 
-            document.getElementById('deleteBtn').classList.add('hidden'); 
-            document.getElementById('addModal').classList.remove('hidden'); 
-            updateLinkButton(); 
-        };
-
-        // Kategorie-Dropdown & Filter
+        document.getElementById('addExpenseBtn').onclick = () => { document.getElementById('expenseForm').reset(); document.getElementById('editId').value = ''; document.getElementById('datum').value = new Date().toISOString().split('T')[0]; document.getElementById('deleteBtn').classList.add('hidden'); document.getElementById('addModal').classList.remove('hidden'); updateLinkButton(); };
         function renderCategoryDropdown() { document.getElementById('categoryDropdown').innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join(''); }
         function renderFilters() { document.getElementById('filterBar').innerHTML = `<button onclick="setFilter('all')" class="px-5 py-2.5 rounded-xl text-xs font-bold transition-colors ${activeFilter==='all'?'bg-slate-900 text-white':'bg-slate-100'}">Alle</button>` + categories.map(c => `<button onclick="setFilter('${c.id}')" class="px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${activeFilter===c.id?'bg-slate-900 text-white':'bg-slate-100'}">${c.name}</button>`).join(''); }
         function setFilter(id) { activeFilter = id; renderFilters(); renderUI(); }
         function setYearFilter(y) { activeYear = y; renderUI(); }
         function updateYearDropdown() { 
             const years = [...new Set(expenses.map(e => e.datum.substring(0,4)))].sort((a,b) => b-a); 
-            const s = document.getElementById('yearFilter'); 
-            const cur = s.value; 
+            const s = document.getElementById('yearFilter'); const cur = s.value; 
             s.innerHTML = `<option value="all">Alle Jahre</option>` + years.map(y => `<option value="${y}">${y}</option>`).join(''); 
             s.value = years.includes(cur) ? cur : 'all'; activeYear = s.value; 
         }
-
-        // Sonstige Funktionen (Kategorien, Export, Import, Clipboard)
         async function addCategory() { const n = document.getElementById('newCatName').value.trim(); if(n) await db.collection('users').doc(currentUser.uid).collection('categories').add({ name: n }); document.getElementById('newCatName').value = ''; }
-        async function editCategory(id, currentName) { const newName = prompt("Kategorie umbenennen:", currentName); if (newName && newName.trim() !== "" && newName !== currentName) { await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({ name: newName.trim() }); showToast("Umbenannt!"); } }
-        async function deleteCategory(id) { if(confirm("Kategorie löschen?")) await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete(); }
+        async function editCategory(id, cur) { const n = prompt("Umbenennen:", cur); if (n && n.trim() !== "" && n !== cur) { await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).update({ name: n.trim() }); } }
+        async function deleteCategory(id) { if(confirm("Löschen?")) await db.collection('users').doc(currentUser.uid).collection('categories').doc(id).delete(); }
         function renderManageCatsList() { document.getElementById('manageCatsList').innerHTML = categories.map(c => `<div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl"><span class="font-bold text-sm text-slate-700">${c.name}</span><div class="flex gap-3"><button onclick="editCategory('${c.id}', '${c.name}')" class="text-indigo-500 p-2"><i class="fas fa-pen"></i></button><button onclick="deleteCategory('${c.id}')" class="text-rose-500 p-2"><i class="fas fa-trash"></i></button></div></div>`).join(''); }
-        async function pasteFromClipboard() { try { const text = await navigator.clipboard.readText(); document.getElementById('manualLink').value = text; updateLinkButton(); showToast("Eingefügt!"); } catch (err) { showToast("Clipboard Fehler"); } }
-        async function deleteCurrentEntry() { if(confirm("Eintrag löschen?")) { await db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete(); closeModal('addModal'); } }
-        async function deleteAllData() { if (expenses.length === 0) return; if (confirm("Wirklich alles löschen?")) { const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); await Promise.all(expenses.map(exp => col.doc(exp.id).delete())); showToast("Daten gelöscht"); closeModal('dataModal'); } }
-        
+        async function pasteFromClipboard() { try { const t = await navigator.clipboard.readText(); document.getElementById('manualLink').value = t; updateLinkButton(); showToast("Eingefügt!"); } catch (e) { showToast("Fehler"); } }
+        async function deleteCurrentEntry() { if(confirm("Löschen?")) { await db.collection('users').doc(currentUser.uid).collection('ausgaben').doc(document.getElementById('editId').value).delete(); closeModal('addModal'); } }
+        async function deleteAllData() { if (expenses.length === 0) return; if (confirm("Wirklich alles löschen?")) { const col = db.collection('users').doc(currentUser.uid).collection('ausgaben'); await Promise.all(expenses.map(exp => col.doc(exp.id).delete())); closeModal('dataModal'); } }
         function exportToExcel() { 
             if (currentFilteredExpenses.length === 0) return; 
             const data = currentFilteredExpenses.map(e => ({ Datum: formatToGermanDate(e.datum), Beschreibung: e.beschreibung, Kategorie: (categories.find(c => c.id === e.kategorieId))?.name || 'Allgemein', 'Betrag (€)': parseFloat(e.betrag).toFixed(2).replace('.', ','), Link: e.fotoUrl || '' })); 
             const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Budget"); XLSX.writeFile(wb, "Budget_Cloud.xlsx"); 
-        }
-        
-        function handleImport(input) { 
-    if (!input.files[0]) return;
-    const reader = new FileReader(); 
-    
-    reader.onload = async (e) => { 
-        const data = new Uint8Array(e.target.result); 
-        const wb = XLSX.read(data, { type: 'array' }); 
-        const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); 
-        
-        const userRef = db.collection('users').doc(currentUser.uid);
-        const col = userRef.collection('ausgaben'); 
-        const catCol = userRef.collection('categories');
-        
-        let skippedCount = 0;
-        let addedCount = 0;
-
-        showToast("Import & Kategorisierung läuft...");
-
-        for (const row of json) {
-            const datum = parseToIsoDate(row.Datum) || new Date().toISOString().split('T')[0];
-            const beschreibung = row.Beschreibung || 'Import';
-            const betrag = parseFloat(String(row['Betrag (€)'] || 0).replace(',', '.'));
-            const link = row.Link || '';
-            const excelKatName = (row.Kategorie || 'Allgemein').trim();
-
-            // 1. DUPLIKATS-CHECK
-            const isDuplicate = expenses.some(exp => 
-                exp.datum === datum && 
-                exp.beschreibung === beschreibung && 
-                Math.abs(parseFloat(exp.betrag) - betrag) < 0.01
-            );
-
-            if (isDuplicate) {
-                skippedCount++;
-                continue;
-            }
-
-            // 2. KATEGORIE-MATCHING
-            // Wir suchen, ob die Kategorie aus der Excel schon in deiner Liste existiert
-            let kat = categories.find(c => c.name.toLowerCase() === excelKatName.toLowerCase());
-            let targetKatId;
-
-            if (kat) {
-                targetKatId = kat.id;
-            } else {
-                // Wenn Kategorie neu ist: In Firebase anlegen
-                const newCatRef = await catCol.add({ name: excelKatName });
-                targetKatId = newCatRef.id;
-                // Kurz warten/lokal pushen ist nicht nötig, da Firestore onSnapshot die Liste aktualisiert
-            }
-
-            // 3. EINTRAG SPEICHERN
-            await col.add({ 
-                datum: datum, 
-                beschreibung: beschreibung, 
-                betrag: betrag, 
-                kategorieId: targetKatId, 
-                fotoUrl: link 
-            });
-            addedCount++;
-        }
-        
-        showToast(`Fertig! ${addedCount} neu, ${skippedCount} Duplikate ignoriert.`); 
-        closeModal('dataModal');
-        input.value = ''; 
-    }; 
-    reader.readAsArrayBuffer(input.files[0]); 
-}
         }
     </script>
 </body>
